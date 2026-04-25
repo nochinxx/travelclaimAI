@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "description": "Seed regulation PDFs for the TravelClaim AI retrieval corpus.",
+  "documents": [
+    {
+      "id": "jtr",
+      "title": "Joint Travel Regulations",
+      "branch": "joint",
+      "path": "raw/jtr.pdf",
+      "sha256": "1b04113c9f5358ef22dee2fcb836667ef0cf1635f5640460e97133bdf9030059"
+    },
+    {
+      "id": "air-force",
+      "title": "Air Force Travel Regulation",
+      "branch": "air-force",
+      "path": "raw/air-force.pdf",
+      "sha256": "11c12e8bb6446845f6e8c387f540a10817751e89c4ec88db4b0ca0a2bb2fbfa5"
+    },
+    {
+      "id": "army",
+      "title": "Army Travel Regulation",
+      "branch": "army",
+      "path": "raw/army.pdf",
+      "sha256": "3fd68c0434726aabe33cf986c1830c65fc72d8a97de29f3b558e899a43732c0e"
+    },
+    {
+      "id": "marines",
+      "title": "Marine Corps Travel Regulation",
+      "branch": "marines",
+      "path": "raw/marines.pdf",
+      "sha256": "0e755fecf61e2c1534b12b3758d13d49d8969519cb119e5172b14550843cf58d"
+    },
+    {
+      "id": "navy",
+      "title": "Navy Travel Regulation",
+      "branch": "navy",
+      "path": "raw/navy.pdf",
+      "sha256": "5d7891fc6b801cc7774b6d133405e11b69dea8ca4b1824c5415b10498b3333d4"
+    }
+  ]
+}
