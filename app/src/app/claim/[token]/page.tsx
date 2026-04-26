@@ -2,6 +2,7 @@
 
 import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { MarkdownMessage } from "@/components/markdown-message";
 import type { TravelClaim, TravelAuthorization } from "@/lib/travelclaim/claim-types";
 import type { RagSearchResult } from "@/lib/rag/types";
 
@@ -257,15 +258,16 @@ export default function SoldierClaimPage({
                   key={message.id}
                   className={`flex flex-col gap-2 ${message.role === "user" ? "items-end" : "items-start"}`}
                 >
-                  <div
-                    className={`max-w-[85%] whitespace-pre-wrap px-4 py-3 text-sm leading-6 ${
-                      message.role === "user"
-                        ? "bg-zinc-950 text-white"
-                        : "border border-zinc-200 bg-white text-zinc-800"
-                    }`}
-                  >
-                    {message.content}
-                  </div>
+                  {message.role === "user" ? (
+                    <div className="max-w-[85%] whitespace-pre-wrap px-4 py-3 text-sm leading-6 bg-zinc-950 text-white">
+                      {message.content}
+                    </div>
+                  ) : (
+                    <MarkdownMessage
+                      text={message.content}
+                      className="max-w-[85%] border border-zinc-200 bg-white px-4 py-3 text-sm leading-6 text-zinc-800 [&>*+*]:mt-2 [&>ul]:space-y-1 [&>ol]:space-y-1"
+                    />
+                  )}
 
                   {message.ragResults && message.ragResults.length > 0 && (
                     <div className="flex w-full max-w-[85%] flex-col gap-1.5">
