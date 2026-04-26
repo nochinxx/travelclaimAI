@@ -69,6 +69,21 @@ export default function Dd1351Page() {
             Download demo-filled PDF
           </a>
 
+          <div className="grid gap-2">
+            <a
+              className="border border-zinc-300 bg-white px-4 py-3 text-center text-sm font-semibold text-zinc-950 transition hover:border-teal-800 hover:text-teal-800"
+              href="/api/dd1351/audit"
+            >
+              Download audit JSON
+            </a>
+            <a
+              className="border border-zinc-300 bg-white px-4 py-3 text-center text-sm font-semibold text-zinc-950 transition hover:border-teal-800 hover:text-teal-800"
+              href="/api/dd1351/checklist"
+            >
+              Download reviewer checklist
+            </a>
+          </div>
+
           {/* Review flags */}
           {blocksNeedingReview.length > 0 && (
             <div className="flex flex-col gap-2 border border-amber-200 bg-amber-50 p-4">
