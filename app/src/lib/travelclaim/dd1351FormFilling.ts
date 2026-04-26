@@ -63,6 +63,7 @@ export interface Dd1351FormFillInput {
   travelStartDate: string;
   travelEndDate: string;
   itinerary: Dd1351ItineraryRow[];
+  pocTravelOverride?: string | null;
   expenses: Dd1351ExpenseRow[];
   deductibleMeals: string;
   claimantSignatureDate: string | null;
@@ -150,6 +151,7 @@ export const DEMO_PHASE_2_FORM_FILL_INPUT: Dd1351FormFillInput = {
       pocMiles: null,
     },
   ],
+  pocTravelOverride: null,
   expenses: [
     {
       date: "2026-05-12",
@@ -276,6 +278,7 @@ export const DEMO_DD1351_ALIGNMENT_TEST_INPUT: Dd1351FormFillInput = {
       pocMiles: 78,
     },
   ],
+  pocTravelOverride: null,
   expenses: [
     {
       date: "2026-05-12",
@@ -396,7 +399,7 @@ export function buildDd1351FormFillPreview(
       buildBlock(13, "Address of Dependents", "N/A for this single-member TDY demo.", false, "Expand later for dependent travel scenarios."),
       buildBlock(14, "Household Goods", "N/A for this TDY demo.", false, "Household goods shipment is outside the current TDY voucher slice."),
       buildBlock(15, "Itinerary", input.itinerary.map(formatItineraryRow), input.itinerary.length === 0, "Rows should include date, place, mode, reason for stop, lodging, and POC miles when applicable."),
-      buildBlock(16, "POC Travel", formatPocTravel(input.itinerary), false, "Review if the traveler drove POV to or from an airport."),
+      buildBlock(16, "POC Travel", formatPocTravel(input.itinerary, input.pocTravelOverride ?? null), false, "Review if the traveler drove POV to or from an airport. A manual override can replace the derived itinerary summary."),
       buildBlock(17, "Duration of Travel", formatTravelDuration(input.travelStartDate, input.travelEndDate), false, "Travel duration is derived from the itinerary dates."),
       buildBlock(18, "Reimbursable Expenses", input.expenses.map(formatExpenseRow), input.expenses.length === 0, "Rental car and other reimbursable costs appear here."),
       buildBlock(19, "Government or Deductible Meals", input.deductibleMeals, input.deductibleMeals === "Needs user input", "Traveler should confirm government-provided or deductible meals."),
@@ -443,7 +446,17 @@ function formatExpenseRow(row: Dd1351ExpenseRow): string {
   ].join(" | ");
 }
 
-function formatPocTravel(itinerary: Dd1351ItineraryRow[]): string | string[] {
+function formatPocTravel(
+  itinerary: Dd1351ItineraryRow[],
+  override: string | null,
+): string | string[] {
+  if (override && override.trim().length > 0) {
+    return override
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+  }
+
   const pocRows = itinerary.filter((row) => row.modeCode === "PA");
 
   if (pocRows.length === 0) {

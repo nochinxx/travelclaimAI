@@ -40,7 +40,9 @@ export type SoldierData = {
   gtccUsed?: boolean;
   gtccSplitDisbursementAmount?: number | null;
   gtccOutstandingBalance?: number | null;
+  previousAdvances?: string | null;
   itinerary?: Dd1351ItineraryRow[];
+  pocTravelOverride?: string | null;
   expenses?: Dd1351ExpenseRow[];
   deductibleMeals?: string;
   claimantSignatureDate?: string | null;
@@ -85,10 +87,11 @@ export function mergeClaimToFormInput(
       outstandingBalance: soldierData.gtccOutstandingBalance ?? null,
     },
     travelOrderNumber: authData.orderNumber,
-    previousAdvances: null,
+    previousAdvances: soldierData.previousAdvances ?? null,
     travelStartDate: authData.authorizedStartDate,
     travelEndDate: authData.authorizedEndDate,
     itinerary: soldierData.itinerary ?? [],
+    pocTravelOverride: soldierData.pocTravelOverride ?? null,
     expenses: soldierData.expenses ?? [],
     deductibleMeals: soldierData.deductibleMeals ?? "Needs user input",
     claimantSignatureDate: soldierData.claimantSignatureDate ?? null,
