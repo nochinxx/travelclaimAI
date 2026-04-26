@@ -216,16 +216,11 @@ export default function SoldierClaimPage({
     }));
   }
 
-<<<<<<< HEAD
   async function uploadAttachment(
     file: File | null,
     attachmentType: ClaimAttachment["attachmentType"],
   ) {
-    if (!file || uploading) return;
-=======
-  async function uploadReceipt(file: File | null) {
     if (!file || uploading || attachmentNotice) return;
->>>>>>> c71b39a5c1b21bdb6d3e00959ce1ced566ade9db
 
     setUploading(true);
     setAttachmentError(null);
