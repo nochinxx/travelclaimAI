@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { MarkdownMessage } from "@/components/markdown-message";
-import { SYNTHETIC_SOLDIERS } from "@/lib/travelclaim/synthetic-soldiers";
+import { SYNTHETIC_SOLDIERS, type SyntheticSoldierProfile } from "@/lib/travelclaim/synthetic-soldiers";
 import type { RagSearchResult } from "@/lib/rag/types";
 
 type UIMessage = {
@@ -33,7 +33,34 @@ export default function NewClaimPage() {
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
   }
 
-  async function send(text = input) {
+  async function createSyntheticAuthorization(profile: SyntheticSoldierProfile, cause?: string) {
+    const response = await fetch("/api/claim", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ syntheticSoldierId: profile.id }),
+    });
+
+    const payload = await response.json();
+
+    if (!response.ok || !payload.shareToken) {
+      throw new Error(payload.error ?? "Demo authorization fallback failed.");
+    }
+
+    setShareToken(payload.shareToken);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: nextMessageId("a"),
+        role: "assistant",
+        content:
+          `${cause ? `${cause}\n\n` : ""}` +
+          `Demo fallback created the travel authorization for ${profile.travelerName}. ` +
+          "Use the share link above to continue the soldier voucher flow.",
+      },
+    ]);
+  }
+
+  async function send(text = input, fallbackProfile?: SyntheticSoldierProfile) {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
 
@@ -61,6 +88,14 @@ export default function NewClaimPage() {
       const payload = await response.json();
 
       if (!response.ok) {
+        if (fallbackProfile) {
+          await createSyntheticAuthorization(
+            fallbackProfile,
+            "Gemini is temporarily unavailable, so I used the verified synthetic demo data instead.",
+          );
+          return;
+        }
+
         setError(payload.error ?? "Chat failed.");
         return;
       }
@@ -79,7 +114,20 @@ export default function NewClaimPage() {
         },
       ]);
     } catch {
-      setError("Network error — please try again.");
+      if (fallbackProfile) {
+        try {
+          await createSyntheticAuthorization(
+            fallbackProfile,
+            "The chat service could not be reached, so I used the verified synthetic demo data instead.",
+          );
+          return;
+        } catch {
+          setError("Network error - please try again.");
+          return;
+        }
+      }
+
+      setError("Network error - please try again.");
     } finally {
       setLoading(false);
       scrollToBottom();
@@ -156,7 +204,7 @@ export default function NewClaimPage() {
                   {SYNTHETIC_SOLDIERS.map((s) => (
                     <button
                       key={s.id}
-                      onClick={() => void send(s.coPrompt)}
+                      onClick={() => void send(s.coPrompt, s)}
                       className="flex flex-col gap-0.5 border border-zinc-200 bg-white px-4 py-3 text-left transition hover:border-teal-700"
                     >
                       <span className="text-sm font-medium text-zinc-800">{s.label}</span>

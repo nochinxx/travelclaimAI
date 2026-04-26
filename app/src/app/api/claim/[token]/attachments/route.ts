@@ -32,6 +32,13 @@ export async function GET(
 ) {
   const { token } = await params;
 
+  if (!isAttachmentBackendConfigured()) {
+    return Response.json({
+      attachments: [],
+      unavailable: "Receipt upload is disabled in this local demo until the Supabase service role key is configured.",
+    });
+  }
+
   try {
     const supabase = createSupabaseAdminClient();
     const claim = await getClaimByToken(supabase, token);
@@ -64,6 +71,13 @@ export async function POST(
   { params }: { params: Promise<{ token: string }> },
 ) {
   const { token } = await params;
+
+  if (!isAttachmentBackendConfigured()) {
+    return Response.json(
+      { error: "Receipt upload requires the Supabase service role key." },
+      { status: 503 },
+    );
+  }
 
   try {
     const supabase = createSupabaseAdminClient();
@@ -233,4 +247,8 @@ function errorMessage(error: unknown, fallback: string) {
     if (typeof message === "string" && message.trim()) return message;
   }
   return fallback;
+}
+
+function isAttachmentBackendConfigured() {
+  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
