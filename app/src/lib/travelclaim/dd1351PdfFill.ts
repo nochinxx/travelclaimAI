@@ -150,38 +150,62 @@ async function drawTemplateOverlay(pdf: PDFDocument, input: Dd1351FormFillInput)
   await pdf.embedFont(StandardFonts.Helvetica);
 
   markBox(page, 40, 718);
-  markBox(page, 418, 679);
-  markBox(page, 498, 679);
-  drawText(page, input.traveler.name, 40, 676, 205);
-  drawText(page, input.traveler.grade, 255, 676, 45);
-  drawText(page, input.traveler.dodIdOrSsnPlaceholder, 366, 677, 48, 7);
-  drawText(page, address.street, 40, 648, 145);
-  drawText(page, address.city, 194, 648, 105);
-  drawText(page, address.state, 309, 648, 30);
-  drawText(page, address.zip, 346, 648, 60);
-  drawText(page, input.traveler.email, 40, 621, 365);
-  drawText(page, input.traveler.phone, 40, 594, 95);
-  drawText(page, input.travelOrderNumber, 159, 594, 100);
-  drawText(page, input.previousAdvances ?? "None", 278, 594, 120);
+  drawCheckboxX(page, 419.6, 677.3);
+  drawCheckboxX(page, 500.6, 677.3);
+  drawText(page, input.traveler.name, 40, 676, 205, 7);
+  drawText(page, input.traveler.grade, 255, 676, 45, 7);
+  drawText(page, input.traveler.dodIdOrSsnPlaceholder, 366, 677, 48, 6.5);
+  drawText(page, address.street, 40, 651, 145, 7);
+  drawText(page, address.city, 194, 651, 105, 7);
+  drawText(page, address.state, 309, 651, 30, 7);
+  drawText(page, address.zip, 346, 651, 60, 7);
+  drawText(page, input.traveler.email, 112, 640, 205, 5.2);
+  drawText(page, input.traveler.phone, 40, 612, 95, 7);
+  drawText(page, input.travelOrderNumber, 159, 612, 100, 7);
+  drawText(page, input.previousAdvances ?? "None", 278, 612, 120, 7);
+  drawText(page, moneyOrBlank(input.gtcc.splitDisbursementAmount), 508, 703, 48, 7);
   drawText(
     page,
     `${input.traveler.organization}, ${input.traveler.station}`,
     40,
-    570,
+    583,
     230,
+    6.5,
   );
   drawItineraryRows(page, input.itinerary);
+  drawPocTravel(page, input.itinerary);
+  drawDuration(page, input);
   drawExpenseRows(page, input.expenses);
-  drawText(page, input.deductibleMeals, 340, 206, 160, 7);
-  drawText(page, input.claimantSignatureDate ?? "Claimant review required", 40, 166, 210);
-  drawText(
-    page,
-    input.approvingOfficial ?? "Approving official review required",
-    40,
-    118,
-    185,
-  );
-  drawText(page, "TravelClaim AI demo fill - synthetic data only", 390, 36, 160, 6);
+
+  if (input.deductibleMeals !== "Needs user input") {
+    drawDeductibleMeals(page, input.deductibleMeals);
+  }
+
+  if (input.claimantSignatureDate) {
+    drawText(page, input.claimantSignatureDate, 518, 174, 42, 6.5);
+  }
+
+  if (input.approvingOfficial) {
+    drawText(page, input.approvingOfficial, 40, 126, 185, 6.5);
+  }
+}
+
+function drawPocTravel(page: PDFPage, rows: Dd1351ItineraryRow[]) {
+  if (!rows.some((row) => row.modeCode === "PA")) {
+    return;
+  }
+
+  drawCheckboxX(page, 123.9, 303.6);
+}
+
+function drawDuration(page: PDFPage, input: Dd1351FormFillInput) {
+  const start = new Date(`${input.travelStartDate}T00:00:00Z`);
+  const end = new Date(`${input.travelEndDate}T00:00:00Z`);
+  const days = Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+
+  if (days > 1) {
+    drawCheckboxX(page, 325.4, 250.3);
+  }
 }
 
 async function createFallbackPdf(
@@ -253,15 +277,29 @@ async function createFallbackPdf(
 }
 
 function drawItineraryRows(page: PDFPage, rows: Dd1351ItineraryRow[]) {
-  rows.slice(0, 7).forEach((row, index) => {
-    const y = 437 - index * 19;
-    drawText(page, shortDate(row.date), 38, y, 24, 7);
-    drawText(page, row.place, 84, y, 185, 6.5);
-    drawText(page, row.modeCode, 281, y, 22);
-    drawText(page, row.reasonCode, 313, y, 24);
-    drawText(page, moneyOrBlank(row.lodgingCost), 350, y, 34, 7);
-    drawText(page, row.pocMiles === null ? "" : String(row.pocMiles), 392, y, 24, 7);
+  rows.slice(0, 6).forEach((row, index) => {
+    const yDepart = 443.2 - index * 19.4;
+    const yArrive = yDepart - 9.7;
+    const place = splitItineraryPlace(row.place);
+
+    drawText(page, shortDate(row.date), 40, yDepart, 24, 5.2);
+    drawText(page, place.departure, 84, yDepart, 185, 5);
+    drawText(page, place.arrival, 84, yArrive, 185, 5);
+    drawText(page, row.modeCode, 282, yArrive, 22, 6);
+    drawText(page, row.reasonCode, 314, yArrive, 24, 6);
+    drawText(page, moneyOrBlank(row.lodgingCost), 350, yArrive, 34, 5.2);
+    drawText(page, row.pocMiles === null ? "" : String(row.pocMiles), 392, yArrive, 24, 5.2);
   });
+}
+
+function splitItineraryPlace(place: string) {
+  const [departure, ...arrivalParts] = place.split(/\s+to\s+/i);
+  const arrival = arrivalParts.join(" to ");
+
+  return {
+    departure: departure?.trim() || place,
+    arrival: arrival.trim() || "",
+  };
 }
 
 function drawExpenseRows(page: PDFPage, rows: Dd1351ExpenseRow[]) {
@@ -318,14 +356,74 @@ function findFieldName(fieldNames: string[], needles: string[]) {
   });
 }
 
-function markBox(page: PDFPage, x: number, y: number) {
-  page.drawLine({ start: { x, y }, end: { x: x + 9, y: y + 9 }, thickness: 1 });
-  page.drawLine({ start: { x: x + 9, y }, end: { x, y: y + 9 }, thickness: 1 });
+function markBox(page: PDFPage, x: number, y: number, size = 9, thickness = 0.9) {
+  page.drawLine({
+    start: { x, y },
+    end: { x: x + size, y: y + size },
+    thickness,
+  });
+  page.drawLine({
+    start: { x: x + size, y },
+    end: { x, y: y + size },
+    thickness,
+  });
+}
+
+function drawDeductibleMeals(page: PDFPage, value: string) {
+  const entries = value
+    .split(";")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [date = "", meals = ""] = entry.split(":");
+      return { date: shortDate(date.trim()), meals: meals.trim() };
+    });
+
+  entries.slice(0, 2).forEach((entry, index) => {
+    const dateCenterX = index === 0 ? 354 : 482;
+    const mealsCenterX = index === 0 ? 418 : 546;
+
+    drawCenteredText(page, entry.date, dateCenterX, 216.5, 42, 5.5);
+    drawCenteredText(page, entry.meals, mealsCenterX, 216.5, 18, 5.5);
+  });
+}
+
+function drawCheckboxX(page: PDFPage, x: number, y: number) {
+  const font = page.doc.embedStandardFont(StandardFonts.HelveticaBold);
+
+  page.drawText("X", {
+    x,
+    y,
+    size: 7.5,
+    font,
+    color: rgb(0.02, 0.08, 0.04),
+  });
 }
 
 function drawText(page: PDFPage, text: string, x: number, y: number, max = 120, size = 8) {
   const font = page.doc.embedStandardFont(StandardFonts.Helvetica);
   page.drawText(truncateByWidth(text, max, size, font), {
+    x,
+    y,
+    size,
+    font,
+    color: rgb(0.02, 0.08, 0.04),
+  });
+}
+
+function drawCenteredText(
+  page: PDFPage,
+  text: string,
+  centerX: number,
+  y: number,
+  max = 120,
+  size = 8,
+) {
+  const font = page.doc.embedStandardFont(StandardFonts.Helvetica);
+  const fittedText = truncateByWidth(text, max, size, font);
+  const x = centerX - font.widthOfTextAtSize(fittedText, size) / 2;
+
+  page.drawText(fittedText, {
     x,
     y,
     size,
