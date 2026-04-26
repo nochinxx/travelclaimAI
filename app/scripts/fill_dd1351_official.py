@@ -5,7 +5,7 @@ from pathlib import Path
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import ArrayObject, BooleanObject, FloatObject, NameObject, NumberObject, TextStringObject
 
-DEFAULT_FIELD_FONT_SIZE = 9
+DEFAULT_FIELD_FONT_SIZE = 7
 
 
 def obj(value):
@@ -37,6 +37,30 @@ def money(value):
     if value is None or value == "":
         return ""
     return f"${float(value):,.2f}"
+
+
+def visual_length(value):
+    text = str(value or "")
+    narrow = set(" .,;:!|'ilI[]()/\\-")
+    wide = set("MW@#%&")
+    length = 0.0
+
+    for char in text:
+        if char in narrow:
+            length += 0.55
+        elif char in wide:
+            length += 1.25
+        else:
+            length += 1.0
+
+    return length
+
+
+def fit_font_size(value, base_size, max_visual_chars, min_size=4.5):
+    length = visual_length(value)
+    if length <= max_visual_chars:
+        return base_size
+    return max(min_size, round(base_size * max_visual_chars / length, 1))
 
 
 def parse_address(value):
@@ -135,26 +159,36 @@ def build_fields(input_data):
         font_sizes,
         7,
     )
-    set_value(values, "form1[0].page1[0].left[0].two[0]", traveler.get("name"), font_sizes=font_sizes, font_size=10)
-    set_value(values, "form1[0].page1[0].left[0].three[0]", traveler.get("grade"), font_sizes=font_sizes, font_size=10)
-    set_value(values, "form1[0].page1[0].left[0].four[0].four_specify[0]", traveler.get("dodIdOrSsnPlaceholder"), font_sizes=font_sizes, font_size=8)
-    set_value(values, "form1[0].page1[0].left[0].sixA[0]", address["street"], font_sizes=font_sizes, font_size=9)
-    set_value(values, "form1[0].page1[0].left[0].sixB[0]", address["city"], font_sizes=font_sizes, font_size=9)
-    set_value(values, "form1[0].page1[0].left[0].sixC[0]", address["state"], font_sizes=font_sizes, font_size=9)
-    set_value(values, "form1[0].page1[0].left[0].sixD[0]", address["zip"], font_sizes=font_sizes, font_size=9)
-    set_value(values, "form1[0].page1[0].left[0].sixE[0]", traveler.get("email"), font_sizes=font_sizes, font_size=7)
-    set_value(values, "form1[0].page1[0].left[0].seven_eight_eleven_twelve[0].seven[0]", traveler.get("phone"), font_sizes=font_sizes, font_size=10)
-    set_value(values, "form1[0].page1[0].left[0].seven_eight_eleven_twelve[0].eight[0]", input_data.get("travelOrderNumber"), font_sizes=font_sizes, font_size=10)
+    name = traveler.get("name")
+    street = address["street"]
+    city = address["city"]
+    email = traveler.get("email")
+    phone = traveler.get("phone")
+    order_number = input_data.get("travelOrderNumber")
+    organization_station = f"{traveler.get('organization', '')}, {traveler.get('station', '')}".strip(", ")
+
+    set_value(values, "form1[0].page1[0].left[0].two[0]", name, alignments, 0, font_sizes, fit_font_size(name, 8, 31, 5.5))
+    set_value(values, "form1[0].page1[0].left[0].three[0]", traveler.get("grade"), font_sizes=font_sizes, font_size=8)
+    set_value(values, "form1[0].page1[0].left[0].four[0].four_specify[0]", traveler.get("dodIdOrSsnPlaceholder"), font_sizes=font_sizes, font_size=7)
+    set_value(values, "form1[0].page1[0].left[0].sixA[0]", street, alignments, 0, font_sizes, fit_font_size(street, 8, 28, 5.5))
+    set_value(values, "form1[0].page1[0].left[0].sixB[0]", city, font_sizes=font_sizes, font_size=fit_font_size(city, 8, 18, 5.5))
+    set_value(values, "form1[0].page1[0].left[0].sixC[0]", address["state"], font_sizes=font_sizes, font_size=8)
+    set_value(values, "form1[0].page1[0].left[0].sixD[0]", address["zip"], font_sizes=font_sizes, font_size=8)
+    set_value(values, "form1[0].page1[0].left[0].sixE[0]", email, alignments, 0, font_sizes, fit_font_size(email, 6, 36, 4.5))
+    set_value(values, "form1[0].page1[0].left[0].seven_eight_eleven_twelve[0].seven[0]", phone, font_sizes=font_sizes, font_size=fit_font_size(phone, 8, 16, 5))
+    set_value(values, "form1[0].page1[0].left[0].seven_eight_eleven_twelve[0].eight[0]", order_number, font_sizes=font_sizes, font_size=fit_font_size(order_number, 7, 25, 4.8))
     set_value(
         values,
         "form1[0].page1[0].left[0].seven_eight_eleven_twelve[0].eleven[0]",
-        f"{traveler.get('organization', '')}, {traveler.get('station', '')}".strip(", "),
-        font_sizes=font_sizes,
-        font_size=9,
+        organization_station,
+        alignments,
+        0,
+        font_sizes,
+        fit_font_size(organization_station, 7.4, 66, 5.2),
     )
-    set_value(values, "form1[0].page1[0].left[0].nine_thirteen_fourteen[0].nine[0]", input_data.get("previousAdvances") or "None", font_sizes=font_sizes, font_size=10)
-    set_value(values, "form1[0].page1[0].twentyB[0]", input_data.get("claimantSignatureDate"), font_sizes=font_sizes, font_size=8)
-    set_value(values, "form1[0].page1[0].twenty1A[0]", input_data.get("approvingOfficial"), font_sizes=font_sizes, font_size=8)
+    set_value(values, "form1[0].page1[0].left[0].nine_thirteen_fourteen[0].nine[0]", input_data.get("previousAdvances") or "None", font_sizes=font_sizes, font_size=8)
+    set_value(values, "form1[0].page1[0].twentyB[0]", input_data.get("claimantSignatureDate"), font_sizes=font_sizes, font_size=7)
+    set_value(values, "form1[0].page1[0].twenty1A[0]", input_data.get("approvingOfficial"), font_sizes=font_sizes, font_size=7)
 
     first_itinerary_date = itinerary[0].get("date") if itinerary else input_data.get("travelStartDate")
     set_value(
@@ -162,21 +196,23 @@ def build_fields(input_data):
         "form1[0].page1[0].left[0].fifteen[0].fifteenAB_header[0].fifteenA_year[0]",
         year(first_itinerary_date),
         font_sizes=font_sizes,
-        font_size=9,
+        font_size=8,
     )
 
     for index, row in enumerate(itinerary[:8], start=1):
+        place = row.get("place")
         set_value(values, itinerary_field(index, "date"), month_day(row.get("date")), font_sizes=font_sizes, font_size=7)
-        set_value(values, itinerary_field(index, "place"), row.get("place"), font_sizes=font_sizes, font_size=8)
-        set_value(values, itinerary_field(index, "modeCode"), row.get("modeCode"), font_sizes=font_sizes, font_size=8)
-        set_value(values, itinerary_field(index, "reasonCode"), row.get("reasonCode"), font_sizes=font_sizes, font_size=8)
+        set_value(values, itinerary_field(index, "place"), place, alignments, 0, font_sizes, fit_font_size(place, 7, 58, 4.8))
+        set_value(values, itinerary_field(index, "modeCode"), row.get("modeCode"), font_sizes=font_sizes, font_size=7)
+        set_value(values, itinerary_field(index, "reasonCode"), row.get("reasonCode"), font_sizes=font_sizes, font_size=7)
         set_value(values, itinerary_field(index, "lodgingCost"), money(row.get("lodgingCost")), alignments, 2, font_sizes, 7)
         set_value(values, itinerary_field(index, "pocMiles"), row.get("pocMiles"), alignments, 2, font_sizes, 7)
 
     for index, expense in enumerate(expenses[:9], start=1):
         allowed_amount = expense.get("allowedAmount", expense.get("amount"))
+        category = expense.get("category")
         set_value(values, expense_field(index, "A"), form_date(expense.get("date")), font_sizes=font_sizes, font_size=6)
-        set_value(values, expense_field(index, "B"), expense.get("category"), font_sizes=font_sizes, font_size=8)
+        set_value(values, expense_field(index, "B"), category, alignments, 0, font_sizes, fit_font_size(category, 7.2, 38, 5))
         set_value(values, expense_field(index, "C"), money(expense.get("amount")), alignments, 2, font_sizes, 7)
         set_value(values, expense_field(index, "D"), money(allowed_amount), alignments, 2, font_sizes, 7)
 
