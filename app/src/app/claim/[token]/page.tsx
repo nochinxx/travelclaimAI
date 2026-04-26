@@ -72,6 +72,7 @@ export default function SoldierClaimPage({
   const [attachmentDrafts, setAttachmentDrafts] = useState<Record<string, ReceiptDraft>>({});
   const [uploading, setUploading] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const messageIdRef = useRef(0);
 
@@ -106,6 +107,7 @@ export default function SoldierClaimPage({
       .then(({ ok, payload }) => {
         if (!active) return;
         if (!ok) throw new Error(payload.error ?? "Failed to load attachments.");
+        setAttachmentNotice(typeof payload.unavailable === "string" ? payload.unavailable : null);
         const nextAttachments = payload.attachments as ClaimAttachment[];
         setAttachments(nextAttachments);
         setAttachmentDrafts((current) => ({
@@ -200,6 +202,7 @@ export default function SoldierClaimPage({
     const response = await fetch(`/api/claim/${token}/attachments`);
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error ?? "Failed to load attachments.");
+    setAttachmentNotice(typeof payload.unavailable === "string" ? payload.unavailable : null);
     const nextAttachments = payload.attachments as ClaimAttachment[];
     setAttachments(nextAttachments);
     setAttachmentDrafts((current) => ({
@@ -213,11 +216,16 @@ export default function SoldierClaimPage({
     }));
   }
 
+<<<<<<< HEAD
   async function uploadAttachment(
     file: File | null,
     attachmentType: ClaimAttachment["attachmentType"],
   ) {
     if (!file || uploading) return;
+=======
+  async function uploadReceipt(file: File | null) {
+    if (!file || uploading || attachmentNotice) return;
+>>>>>>> c71b39a5c1b21bdb6d3e00959ce1ced566ade9db
 
     setUploading(true);
     setAttachmentError(null);
@@ -453,14 +461,20 @@ export default function SoldierClaimPage({
               <p className="mt-1 text-xs leading-5 text-zinc-500">
                 Upload receipt images for Block 18, or add supplemental documents for the voucher package.
               </p>
-              <label className="mt-3 block cursor-pointer border border-dashed border-zinc-300 bg-zinc-50 px-3 py-3 text-center text-xs font-semibold text-zinc-700 transition hover:border-teal-700 hover:text-teal-700">
+              <label
+                className={`mt-3 block border border-dashed px-3 py-3 text-center text-xs font-semibold transition ${
+                  attachmentNotice
+                    ? "cursor-not-allowed border-zinc-200 bg-zinc-50 text-zinc-400"
+                    : "cursor-pointer border-zinc-300 bg-zinc-50 text-zinc-700 hover:border-teal-700 hover:text-teal-700"
+                }`}
+              >
                 {uploading ? "Uploading..." : "Upload receipt"}
                 <input
                   className="hidden"
                   type="file"
                   accept="image/*,application/pdf"
                   capture="environment"
-                  disabled={uploading}
+                  disabled={uploading || Boolean(attachmentNotice)}
                   onChange={(event) => {
                     const file = event.target.files?.[0] ?? null;
                     void uploadAttachment(file, "receipt");
@@ -485,6 +499,9 @@ export default function SoldierClaimPage({
               </label>
               {attachmentError && (
                 <p className="mt-2 text-xs leading-5 text-red-700">{attachmentError}</p>
+              )}
+              {attachmentNotice && (
+                <p className="mt-2 text-xs leading-5 text-zinc-500">{attachmentNotice}</p>
               )}
               <p className="mt-2 text-xs text-zinc-400">
                 {attachments.length} attachment{attachments.length === 1 ? "" : "s"} on this claim.

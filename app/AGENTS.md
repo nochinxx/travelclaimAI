@@ -45,6 +45,7 @@ Soldier opens /claim/[token]
 | `/dd1351` | Demo DD 1351-2 block preview with synthetic data |
 | `/claim/new` | CO interface — create a travel authorization |
 | `/claim/[token]` | Soldier interface — fill actual travel details |
+| `/claim/[token]/preview` | Editable DD 1351-2 block preview and official PDF generation |
 
 ---
 
@@ -175,11 +176,14 @@ Do not change dimensions without a full DB migration and re-ingestion. Keep cons
 - `buildDd1351ValidationFindings(input)` — standalone validation rules
 
 `src/lib/travelclaim/dd1351PdfFill.ts`:
-- Uses `pdf-lib` for the generated/fallback PDF export path.
+- Legacy JS/pdf-lib helper for generated/fallback PDF exports. The current official claim export path uses Python against the real official DD1351-2 fields.
 
 `scripts/fill_dd1351_official.py`:
-- Python helper for filling the official DD1351-2 AcroForm fields directly.
-- Template: `data/reference/dd1351-2.original-official.pdf`.
+- JSON-to-official-DD1351 filler used by `/api/claim/[token]/generate-pdf`.
+- Reads `Dd1351FormFillInput` JSON, fills the official encrypted DD 1351-2 AcroForm fields by field name, hides signature widgets, sets Times-style field appearances, and flattens the PDF with PyMuPDF.
+- Includes field-specific typography and auto-shrink handling for long Block 11, Block 15, and Block 18 values.
+- Requires `pypdf`, `cryptography`, and `PyMuPDF`; install with `python -m pip install -r requirements-pdf.txt`.
+- Official template: `data/reference/dd1351-2.original-official.pdf`.
 - Keep field mapping changes in sync with `requirements-pdf.txt` and the `/claim/[token]/preview` flow.
 
 `src/lib/travelclaim/receipt-ocr.ts`:
@@ -194,17 +198,18 @@ Do not change dimensions without a full DB migration and re-ingestion. Keep cons
 | Method | Route | Purpose |
 |---|---|---|
 | `POST` | `/api/chat` | Gemini chat. Body: `{ messages, role?, authData?, branch?, claimToken? }` |
+| `POST` | `/api/claim` | Demo fallback claim creation for known synthetic profiles when Gemini is unavailable. Body: `{ syntheticSoldierId }` |
 | `GET` | `/api/claim/[token]` | Fetch a claim by share token |
 | `PATCH` | `/api/claim/[token]` | Update soldier data. Body: `{ soldierData, status? }` |
 | `GET` | `/api/claim/[token]/attachments` | List claim attachments and signed storage URLs |
 | `POST` | `/api/claim/[token]/attachments` | Upload a receipt or supporting document. Receipts run OCR; supporting documents are stored only. Body is multipart with `file` and optional `attachmentType` |
 | `PATCH` | `/api/claim/[token]/attachments/[attachmentId]/confirm` | Save edited receipt data and append/update `soldier_data.expenses` |
 | `GET` | `/api/claim/[token]/preview` | Build the current claim preview payload |
-| `GET` | `/api/claim/[token]/generate-pdf` | Generate/fill DD1351-2 PDF for a claim |
+| `GET` | `/api/claim/[token]/generate-pdf` | Generate the official filled DD 1351-2 PDF for a real claim. Calls `scripts/fill_dd1351_official.py`. |
 | `POST` | `/api/rag/search` | RAG search (Supabase or local fallback). Body: `{ query, limit? }` |
 | `GET` | `/api/dd1351/audit` | Download audit JSON (demo data) |
 | `GET` | `/api/dd1351/checklist` | Download reviewer checklist Markdown (demo data) |
-| `GET` | `/api/dd1351/demo-pdf` | Download demo-filled PDF (requires pdf-lib) |
+| `GET` | `/api/dd1351/demo-pdf` | Legacy demo-filled PDF route. Do not use for the official claim export path. |
 
 ---
 
@@ -256,6 +261,7 @@ GEMINI_CHAT_MODEL=gemini-2.5-flash  # free tier; swap to gemini-2.0-flash with b
 
 GOOGLE_APPLICATION_CREDENTIALS=       # local path to Google service-account JSON
 GOOGLE_CLOUD_VISION_CREDENTIALS_JSON= # deploy-time JSON string alternative
+DD1351_PYTHON_BIN=               # optional server-side override for the Python executable used by official PDF generation
 ```
 
 ---
@@ -263,6 +269,7 @@ GOOGLE_CLOUD_VISION_CREDENTIALS_JSON= # deploy-time JSON string alternative
 ## Synthetic Test Soldiers
 
 Six profiles on `/claim/new` for testing the CO workflow. Click any card to inject the soldier's info as the first message.
+If Gemini is overloaded during a demo, these cards can fall back to deterministic synthetic authorization creation through `POST /api/claim`.
 
 | ID | Label | Branch |
 |---|---|---|
@@ -284,6 +291,7 @@ pnpm dev        # start dev server
 pnpm build      # production build
 pnpm lint       # ESLint
 pnpm rag:index  # build local TF-IDF fallback index from corpus PDFs
+python -m pip install -r requirements-pdf.txt  # install official DD1351 PDF generation dependencies
 ```
 
 ---
