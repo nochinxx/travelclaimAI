@@ -39,11 +39,17 @@ export interface Dd1351ItineraryRow {
 }
 
 export interface Dd1351ExpenseRow {
+  attachment_id?: string;
   date: string;
   category: string;
+  merchant?: string;
   amount: number;
   receiptRequired: boolean;
   receiptAttached: boolean;
+  payment_method?: string;
+  receipt_uploaded?: boolean;
+  needs_review?: boolean;
+  notes?: string;
 }
 
 export interface Dd1351AttachmentStatus {

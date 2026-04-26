@@ -175,7 +175,17 @@ Do not change dimensions without a full DB migration and re-ingestion. Keep cons
 - `buildDd1351ValidationFindings(input)` — standalone validation rules
 
 `src/lib/travelclaim/dd1351PdfFill.ts`:
-- Requires `pdf-lib` (not yet installed). Do not import from this file until the dependency is added.
+- Uses `pdf-lib` for the generated/fallback PDF export path.
+
+`scripts/fill_dd1351_official.py`:
+- Python helper for filling the official DD1351-2 AcroForm fields directly.
+- Template: `data/reference/dd1351-2.original-official.pdf`.
+- Keep field mapping changes in sync with `requirements-pdf.txt` and the `/claim/[token]/preview` flow.
+
+`src/lib/travelclaim/receipt-ocr.ts`:
+- Server-only Google Cloud Vision OCR helper for receipt uploads.
+- Vision extracts text only. Date, merchant, amount, category, receipt type, payment method, and review flags are parsed in app code.
+- Images are OCR'd directly. PDFs can be stored as attachments, but direct PDF OCR through Vision requires a Google Cloud Storage async flow, so image receipts are the supported OCR path for now.
 
 ---
 
@@ -186,10 +196,41 @@ Do not change dimensions without a full DB migration and re-ingestion. Keep cons
 | `POST` | `/api/chat` | Gemini chat. Body: `{ messages, role?, authData?, branch?, claimToken? }` |
 | `GET` | `/api/claim/[token]` | Fetch a claim by share token |
 | `PATCH` | `/api/claim/[token]` | Update soldier data. Body: `{ soldierData, status? }` |
+| `GET` | `/api/claim/[token]/attachments` | List claim attachments and signed storage URLs |
+| `POST` | `/api/claim/[token]/attachments` | Upload a receipt, store it in Supabase Storage, create a `claim_attachments` row, and run OCR for supported images |
+| `PATCH` | `/api/claim/[token]/attachments/[attachmentId]/confirm` | Save edited receipt data and append/update `soldier_data.expenses` |
+| `GET` | `/api/claim/[token]/preview` | Build the current claim preview payload |
+| `GET` | `/api/claim/[token]/generate-pdf` | Generate/fill DD1351-2 PDF for a claim |
 | `POST` | `/api/rag/search` | RAG search (Supabase or local fallback). Body: `{ query, limit? }` |
 | `GET` | `/api/dd1351/audit` | Download audit JSON (demo data) |
 | `GET` | `/api/dd1351/checklist` | Download reviewer checklist Markdown (demo data) |
 | `GET` | `/api/dd1351/demo-pdf` | Download demo-filled PDF (requires pdf-lib) |
+
+---
+
+## Receipt Attachments
+
+Migration: `../supabase/migrations/20260426020000_claim_attachments.sql`
+
+- Table: `claim_attachments`
+  - Links each upload to `travel_claims.id`.
+  - Stores Supabase Storage path, file metadata, OCR text, extracted data, confirmed data, and status.
+  - Status values: `uploaded`, `ocr_complete`, `needs_confirmation`, `confirmed`, `failed`.
+- Storage bucket: `claim-attachments`
+  - Private bucket.
+  - Upload path: `claims/{claim_id}/attachments/{timestamp}-{safe_filename}`.
+  - API returns short-lived signed URLs for display.
+- Confirmation flow:
+  - Soldier uploads receipt on `/claim/[token]`.
+  - API uploads the file and OCRs supported images with Google Cloud Vision.
+  - Soldier edits/accepts extracted fields.
+  - Confirmation writes `claim_attachments.confirmed_data`, sets status `confirmed`, and appends/updates the matching `soldier_data.expenses` item with `attachment_id`.
+
+Block 18 rules used by the parser:
+- Lodging receipts are required regardless of amount.
+- Other reimbursable expenses generally require receipts at `$75+`.
+- Meals are normally per diem, so meal-like receipts are marked for review instead of treated as ordinary Block 18 expenses.
+- If category or amount is uncertain, set `needs_review: true`.
 
 ---
 
@@ -198,12 +239,15 @@ Do not change dimensions without a full DB migration and re-ingestion. Keep cons
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=        # server-only; for trusted ingestion scripts
+SUPABASE_SERVICE_ROLE_KEY=        # server-only; RAG ingestion and attachment storage/admin DB writes
 
 GEMINI_API_KEY=
 GEMINI_EMBEDDING_MODEL=gemini-embedding-001
 GEMINI_EMBEDDING_DIMENSIONS=768
 GEMINI_CHAT_MODEL=gemini-2.5-flash  # free tier; swap to gemini-2.0-flash with billing
+
+GOOGLE_APPLICATION_CREDENTIALS=       # local path to Google service-account JSON
+GOOGLE_CLOUD_VISION_CREDENTIALS_JSON= # deploy-time JSON string alternative
 ```
 
 ---

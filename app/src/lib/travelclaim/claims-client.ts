@@ -81,7 +81,13 @@ export async function updateClaimSoldierData(
   soldierData: SoldierData,
   status?: ClaimStatus,
 ): Promise<void> {
-  const body: Record<string, unknown> = { soldier_data: soldierData };
+  const current = await getClaimByToken(token);
+  const body: Record<string, unknown> = {
+    soldier_data: {
+      ...(current?.soldierData ?? {}),
+      ...soldierData,
+    },
+  };
   if (status) body.status = status;
 
   const response = await fetch(

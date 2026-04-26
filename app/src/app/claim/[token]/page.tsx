@@ -1,10 +1,10 @@
 "use client";
 
-import { use, useEffect, useRef, useState } from "react";
+import { use, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { MarkdownMessage } from "@/components/markdown-message";
 import { findSyntheticSoldier } from "@/lib/travelclaim/synthetic-soldiers";
-import type { TravelClaim, TravelAuthorization } from "@/lib/travelclaim/claim-types";
+import type { SoldierData, TravelClaim, TravelAuthorization } from "@/lib/travelclaim/claim-types";
 import type { RagSearchResult } from "@/lib/rag/types";
 
 type UIMessage = {
@@ -15,6 +15,42 @@ type UIMessage = {
 };
 
 type ApiMessage = { role: "user" | "assistant"; content: string };
+
+type ReceiptDraft = {
+  date: string;
+  merchant: string;
+  amount: number | null;
+  category: string;
+  receipt_type: string;
+  payment_method: string;
+  requires_receipt: boolean;
+  needs_review: boolean;
+  notes: string;
+};
+
+type ClaimAttachment = {
+  id: string;
+  fileName: string | null;
+  fileType: string | null;
+  fileSize: number | null;
+  status: string;
+  signedUrl: string | null;
+  extractedData: Partial<ReceiptDraft>;
+  confirmedData: Partial<ReceiptDraft>;
+  createdAt: string;
+};
+
+const RECEIPT_CATEGORIES = [
+  "lodging",
+  "transportation",
+  "parking",
+  "tolls",
+  "baggage",
+  "rental_car",
+  "fuel",
+  "registration_fee",
+  "other",
+];
 
 export default function SoldierClaimPage({
   params,
@@ -31,6 +67,10 @@ export default function SoldierClaimPage({
   const [chatError, setChatError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [prefilling, setPrefilling] = useState(false);
+  const [attachments, setAttachments] = useState<ClaimAttachment[]>([]);
+  const [attachmentDrafts, setAttachmentDrafts] = useState<Record<string, ReceiptDraft>>({});
+  const [uploading, setUploading] = useState(false);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const messageIdRef = useRef(0);
 
@@ -50,6 +90,41 @@ export default function SoldierClaimPage({
         }
       })
       .catch(() => setClaimError("Failed to load claim."));
+  }, [token]);
+
+  useEffect(() => {
+    let active = true;
+
+    fetch(`/api/claim/${token}/attachments`)
+      .then((response) =>
+        response.json().then((payload) => ({
+          ok: response.ok,
+          payload,
+        })),
+      )
+      .then(({ ok, payload }) => {
+        if (!active) return;
+        if (!ok) throw new Error(payload.error ?? "Failed to load attachments.");
+        const nextAttachments = payload.attachments as ClaimAttachment[];
+        setAttachments(nextAttachments);
+        setAttachmentDrafts((current) => ({
+          ...Object.fromEntries(
+            nextAttachments.map((attachment) => [
+              attachment.id,
+              buildReceiptDraft(attachment.confirmedData, attachment.extractedData),
+            ]),
+          ),
+          ...current,
+        }));
+      })
+      .catch((error) => {
+        if (!active) return;
+        setAttachmentError(error instanceof Error ? error.message : "Failed to load attachments.");
+      });
+
+    return () => {
+      active = false;
+    };
   }, [token]);
 
   function scrollToBottom() {
@@ -120,6 +195,92 @@ export default function SoldierClaimPage({
     void send();
   }
 
+  async function loadAttachments() {
+    const response = await fetch(`/api/claim/${token}/attachments`);
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error ?? "Failed to load attachments.");
+    const nextAttachments = payload.attachments as ClaimAttachment[];
+    setAttachments(nextAttachments);
+    setAttachmentDrafts((current) => ({
+      ...Object.fromEntries(
+        nextAttachments.map((attachment) => [
+          attachment.id,
+          buildReceiptDraft(attachment.confirmedData, attachment.extractedData),
+        ]),
+      ),
+      ...current,
+    }));
+  }
+
+  async function uploadReceipt(file: File | null) {
+    if (!file || uploading) return;
+
+    setUploading(true);
+    setAttachmentError(null);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await fetch(`/api/claim/${token}/attachments`, {
+        method: "POST",
+        body: formData,
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Receipt upload failed.");
+
+      const attachment = payload.attachment as ClaimAttachment;
+      setAttachments((current) => [attachment, ...current.filter((item) => item.id !== attachment.id)]);
+      setAttachmentDrafts((current) => ({
+        ...current,
+        [attachment.id]: buildReceiptDraft(attachment.confirmedData, attachment.extractedData),
+      }));
+    } catch (error) {
+      setAttachmentError(error instanceof Error ? error.message : "Receipt upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function updateAttachmentDraft(
+    attachmentId: string,
+    field: keyof ReceiptDraft,
+    value: string | number | boolean | null,
+  ) {
+    setAttachmentDrafts((current) => ({
+      ...current,
+      [attachmentId]: {
+        ...current[attachmentId],
+        [field]: value,
+      },
+    }));
+  }
+
+  async function confirmAttachment(attachmentId: string) {
+    const draft = attachmentDrafts[attachmentId];
+    if (!draft) return;
+
+    setAttachmentError(null);
+
+    try {
+      const response = await fetch(`/api/claim/${token}/attachments/${attachmentId}/confirm`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirmedData: draft }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Could not confirm receipt.");
+
+      setClaim((current) =>
+        current ? { ...current, soldierData: payload.soldierData, status: "in_progress" } : current,
+      );
+      setLastSaved(new Date().toLocaleTimeString());
+      await loadAttachments();
+    } catch (error) {
+      setAttachmentError(error instanceof Error ? error.message : "Could not confirm receipt.");
+    }
+  }
+
   // ── Loading / error states ────────────────────────────────────────────────
 
   if (claimError) {
@@ -144,18 +305,24 @@ export default function SoldierClaimPage({
     );
   }
 
-  const auth = claim.authData as TravelAuthorization;
+  const currentClaim = claim;
+  const auth = currentClaim.authData as TravelAuthorization;
   const syntheticProfile = findSyntheticSoldier(auth.travelerName);
 
   async function prefill() {
     if (!syntheticProfile) return;
+    const soldierData = mergePrefillSoldierData(
+      currentClaim.soldierData,
+      syntheticProfile.soldierData,
+    );
+
     setPrefilling(true);
     try {
       await fetch(`/api/claim/${token}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          soldierData: syntheticProfile.soldierData,
+          soldierData,
           status: "in_progress",
         }),
       });
@@ -267,6 +434,36 @@ export default function SoldierClaimPage({
             {auth.specialInstructions && (
               <AuthRow label="Special instructions" value={auth.specialInstructions} />
             )}
+
+            <div className="border-t border-zinc-200 pt-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                Receipts
+              </p>
+              <p className="mt-1 text-xs leading-5 text-zinc-500">
+                Upload receipt images for Block 18 expenses. PDFs are stored, but image uploads work best for OCR.
+              </p>
+              <label className="mt-3 block cursor-pointer border border-dashed border-zinc-300 bg-zinc-50 px-3 py-3 text-center text-xs font-semibold text-zinc-700 transition hover:border-teal-700 hover:text-teal-700">
+                {uploading ? "Uploading..." : "Upload receipt"}
+                <input
+                  className="hidden"
+                  type="file"
+                  accept="image/*,application/pdf"
+                  capture="environment"
+                  disabled={uploading}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    void uploadReceipt(file);
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </label>
+              {attachmentError && (
+                <p className="mt-2 text-xs leading-5 text-red-700">{attachmentError}</p>
+              )}
+              <p className="mt-2 text-xs text-zinc-400">
+                {attachments.length} attachment{attachments.length === 1 ? "" : "s"} on this claim.
+              </p>
+            </div>
           </div>
         </aside>
 
@@ -295,6 +492,25 @@ export default function SoldierClaimPage({
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {attachments.length > 0 && (
+                <div className="flex flex-col gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-400">
+                    Uploaded receipts
+                  </p>
+                  {attachments.map((attachment) => (
+                    <ReceiptAttachmentCard
+                      attachment={attachment}
+                      draft={attachmentDrafts[attachment.id]}
+                      key={attachment.id}
+                      onConfirm={() => void confirmAttachment(attachment.id)}
+                      onDraftChange={(field, value) =>
+                        updateAttachmentDraft(attachment.id, field, value)
+                      }
+                    />
+                  ))}
                 </div>
               )}
 
@@ -391,6 +607,196 @@ export default function SoldierClaimPage({
       </div>
     </div>
   );
+}
+
+function ReceiptAttachmentCard({
+  attachment,
+  draft,
+  onDraftChange,
+  onConfirm,
+}: Readonly<{
+  attachment: ClaimAttachment;
+  draft?: ReceiptDraft;
+  onDraftChange: (field: keyof ReceiptDraft, value: string | number | boolean | null) => void;
+  onConfirm: () => void;
+}>) {
+  const value = draft ?? buildReceiptDraft(attachment.confirmedData, attachment.extractedData);
+  const isConfirmed = attachment.status === "confirmed";
+
+  return (
+    <article className="border border-zinc-200 bg-white p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-sm font-semibold text-zinc-800">
+          {attachment.fileName ?? "Uploaded receipt"}
+        </p>
+        <span className="rounded-full border border-zinc-200 px-2 py-0.5 text-xs text-zinc-500">
+          {attachment.status}
+        </span>
+        {attachment.signedUrl && (
+          <a
+            className="ml-auto text-xs font-semibold text-teal-700 hover:underline"
+            href={attachment.signedUrl}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            View file
+          </a>
+        )}
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <Field label="Date">
+          <input
+            className="w-full border border-zinc-300 px-2 py-2 text-sm"
+            type="date"
+            value={value.date}
+            onChange={(event) => onDraftChange("date", event.target.value)}
+          />
+        </Field>
+        <Field label="Merchant">
+          <input
+            className="w-full border border-zinc-300 px-2 py-2 text-sm"
+            value={value.merchant}
+            onChange={(event) => onDraftChange("merchant", event.target.value)}
+          />
+        </Field>
+        <Field label="Amount">
+          <input
+            className="w-full border border-zinc-300 px-2 py-2 text-sm"
+            min="0"
+            step="0.01"
+            type="number"
+            value={value.amount ?? ""}
+            onChange={(event) =>
+              onDraftChange("amount", event.target.value ? Number(event.target.value) : null)
+            }
+          />
+        </Field>
+        <Field label="Category">
+          <select
+            className="w-full border border-zinc-300 px-2 py-2 text-sm"
+            value={value.category}
+            onChange={(event) => onDraftChange("category", event.target.value)}
+          >
+            {RECEIPT_CATEGORIES.map((category) => (
+              <option key={category} value={category}>
+                {category.replace("_", " ")}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Receipt type">
+          <input
+            className="w-full border border-zinc-300 px-2 py-2 text-sm"
+            value={value.receipt_type}
+            onChange={(event) => onDraftChange("receipt_type", event.target.value)}
+          />
+        </Field>
+        <Field label="Payment method">
+          <input
+            className="w-full border border-zinc-300 px-2 py-2 text-sm"
+            value={value.payment_method}
+            onChange={(event) => onDraftChange("payment_method", event.target.value)}
+          />
+        </Field>
+      </div>
+
+      <Field label="Notes">
+        <textarea
+          className="min-h-20 w-full resize-none border border-zinc-300 px-2 py-2 text-sm"
+          value={value.notes}
+          onChange={(event) => onDraftChange("notes", event.target.value)}
+        />
+      </Field>
+
+      <div className="mt-3 flex flex-wrap items-center gap-4">
+        <label className="flex items-center gap-2 text-sm text-zinc-600">
+          <input
+            checked={value.requires_receipt}
+            type="checkbox"
+            onChange={(event) => onDraftChange("requires_receipt", event.target.checked)}
+          />
+          Receipt required
+        </label>
+        <label className="flex items-center gap-2 text-sm text-zinc-600">
+          <input
+            checked={value.needs_review}
+            type="checkbox"
+            onChange={(event) => onDraftChange("needs_review", event.target.checked)}
+          />
+          Needs review
+        </label>
+        <button
+          className="ml-auto bg-zinc-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800"
+          onClick={onConfirm}
+          type="button"
+        >
+          {isConfirmed ? "Update confirmed expense" : "Confirm expense"}
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function Field({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
+  return (
+    <label className="mt-3 block">
+      <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-zinc-400">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function buildReceiptDraft(
+  confirmedData: Partial<ReceiptDraft> = {},
+  extractedData: Partial<ReceiptDraft> = {},
+): ReceiptDraft {
+  const source = Object.keys(confirmedData).length ? confirmedData : extractedData;
+  return {
+    date: source.date ?? "",
+    merchant: source.merchant ?? "",
+    amount: typeof source.amount === "number" ? source.amount : null,
+    category: source.category ?? "other",
+    receipt_type: source.receipt_type ?? "receipt",
+    payment_method: source.payment_method ?? "",
+    requires_receipt: source.requires_receipt ?? true,
+    needs_review: source.needs_review ?? true,
+    notes: source.notes ?? "",
+  };
+}
+
+function mergePrefillSoldierData(current: SoldierData, prefill: SoldierData): SoldierData {
+  const prefillExpenses = prefill.expenses ?? [];
+  const prefillAttachmentIds = new Set(
+    prefillExpenses
+      .map((expense) => expense.attachment_id)
+      .filter((id): id is string => Boolean(id)),
+  );
+  const preservedReceiptExpenses = (current.expenses ?? []).filter(
+    (expense) => expense.attachment_id && !prefillAttachmentIds.has(expense.attachment_id),
+  );
+
+  return {
+    ...current,
+    ...prefill,
+    expenses: [...prefillExpenses, ...preservedReceiptExpenses],
+    attachments: mergeAttachmentStatuses(current.attachments ?? [], prefill.attachments ?? []),
+  };
+}
+
+function mergeAttachmentStatuses(
+  current: NonNullable<SoldierData["attachments"]>,
+  prefill: NonNullable<SoldierData["attachments"]>,
+) {
+  const currentByKey = new Map(current.map((attachment) => [attachment.key, attachment]));
+  const merged = prefill.map((attachment) => {
+    const existing = currentByKey.get(attachment.key);
+    return existing ? { ...attachment, attached: attachment.attached || existing.attached } : attachment;
+  });
+  const prefillKeys = new Set(prefill.map((attachment) => attachment.key));
+  return [...merged, ...current.filter((attachment) => !prefillKeys.has(attachment.key))];
 }
 
 function AuthRow({
