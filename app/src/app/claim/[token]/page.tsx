@@ -29,6 +29,12 @@ export default function SoldierClaimPage({
   const [chatError, setChatError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const messageIdRef = useRef(0);
+
+  function nextMessageId(prefix: "u" | "a") {
+    messageIdRef.current += 1;
+    return `${prefix}-${messageIdRef.current}`;
+  }
 
   useEffect(() => {
     fetch(`/api/claim/${token}`)
@@ -54,7 +60,7 @@ export default function SoldierClaimPage({
     setInput("");
     setChatError(null);
 
-    const userMessage: UIMessage = { id: `u-${Date.now()}`, role: "user", content: trimmed };
+    const userMessage: UIMessage = { id: nextMessageId("u"), role: "user", content: trimmed };
     const next = [...messages, userMessage];
     setMessages(next);
     setLoading(true);
@@ -92,7 +98,7 @@ export default function SoldierClaimPage({
       setMessages((prev) => [
         ...prev,
         {
-          id: `a-${Date.now()}`,
+          id: nextMessageId("a"),
           role: "assistant",
           content: payload.text,
           ragResults: payload.ragResults?.length ? payload.ragResults : undefined,
