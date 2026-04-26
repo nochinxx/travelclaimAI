@@ -44,10 +44,46 @@ client.
   - `GEMINI_API_KEY`
   - `GEMINI_EMBEDDING_MODEL=gemini-embedding-001`
   - `GEMINI_EMBEDDING_DIMENSIONS=768`
-- Add a chunk import script that writes the regulation corpus to Supabase.
-- Add Gemini document embeddings during ingestion using the `RETRIEVAL_DOCUMENT`
-  task type.
+- Run `pnpm rag:ingest` from `app/` to write the regulation corpus to Supabase.
+  The script uses Gemini document embeddings with the `RETRIEVAL_DOCUMENT` task
+  type.
 - `/api/rag/search` already switches to Supabase RPC when the Supabase and Gemini
   environment variables are present. Otherwise, it uses the local JSON fallback.
 
 The current local retriever can stay as a no-network development fallback.
+
+## Ingestion
+
+From `app/`:
+
+```bash
+pnpm rag:index
+pnpm rag:ingest -- --dry-run
+pnpm rag:ingest
+```
+
+`pnpm rag:ingest` reads `corpus/regulations/index/regulations-index.json`,
+upserts public rows into `rag_documents`, embeds each chunk with
+`gemini-embedding-001`, normalizes the 768-dimensional vectors, and upserts rows
+into `rag_document_chunks`.
+
+Useful options:
+
+- `--dry-run`: inspect the planned ingestion without network writes.
+- `--limit 10`: ingest only the first 10 chunks.
+- `--start 100 --limit 50`: resume or test a range.
+- `--batch-size 5`: control chunk upsert batch size.
+
+The full corpus currently has 852 chunks, so ingestion will make one Gemini
+embedding request per chunk. Re-running the script is safe because rows are
+upserted by `external_id`.
+
+If Gemini rate-limits the run, resume from the last completed chunk. For example,
+if the output says `Upserted chunks 41-50 of 852`, continue with:
+
+```bash
+RAG_INGEST_DELAY_MS=1000 pnpm rag:ingest -- --start 50 --batch-size 5
+```
+
+The script retries 429 and 5xx embedding failures with exponential backoff. Tune
+`RAG_INGEST_DELAY_MS` and `RAG_INGEST_MAX_RETRIES` if your Gemini quota is tight.

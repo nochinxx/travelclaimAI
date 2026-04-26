@@ -127,8 +127,8 @@ Local extraction/index scripts:
 - `../scripts/build-rag-index.mjs`
 
 `build-rag-index.mjs` validates manifest checksums before indexing. It currently
-builds a local hashed TF-IDF index. Production ingestion still needs a Supabase
-upsert script that reuses extraction/chunking, embeds chunks with Gemini
+builds a local hashed TF-IDF index. Production ingestion uses
+`../scripts/ingest-rag-supabase.mjs`, embeds chunks with Gemini
 `RETRIEVAL_DOCUMENT`, and writes to `rag_documents` and `rag_document_chunks`.
 
 ## Commands
@@ -137,6 +137,8 @@ Run from `app/`:
 
 ```bash
 pnpm rag:index
+pnpm rag:ingest -- --dry-run
+pnpm rag:ingest
 pnpm lint
 pnpm build
 pnpm dev
@@ -146,6 +148,11 @@ Notes:
 
 - `pnpm build` may need permission outside the sandbox because Turbopack binds a
   local worker port during CSS processing.
+- `pnpm rag:ingest` needs network access, `GEMINI_API_KEY`, and
+  `SUPABASE_SERVICE_ROLE_KEY`. Never expose the service role key to client
+  components.
+- If Gemini rate-limits ingestion, resume from the last completed chunk with
+  `RAG_INGEST_DELAY_MS=1000 pnpm rag:ingest -- --start <completed> --batch-size 5`.
 - The app intentionally avoids `next/font/google` so production builds do not
   require network access for fonts.
 

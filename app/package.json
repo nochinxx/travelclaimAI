@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "rag:index": "node ../scripts/build-rag-index.mjs"
+    "rag:index": "node ../scripts/build-rag-index.mjs",
+    "rag:ingest": "node ../scripts/ingest-rag-supabase.mjs"
   },
   "dependencies": {
     "next": "16.2.4",

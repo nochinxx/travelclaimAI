@@ -28,3 +28,12 @@ For the Supabase-backed implementation, use the local extractor as the ingestion
 source and write chunks into the `rag_documents` and `rag_document_chunks` tables
 created by `supabase/migrations/20260425230000_rag_schema.sql`. Embeddings should
 be generated with `gemini-embedding-001` at 768 dimensions.
+
+From `app/`, run:
+
+```bash
+pnpm rag:ingest -- --dry-run
+pnpm rag:ingest
+```
+
+The ingestion script requires `SUPABASE_SERVICE_ROLE_KEY` in `app/.env.local`.
