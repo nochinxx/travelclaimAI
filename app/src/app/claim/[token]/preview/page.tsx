@@ -290,6 +290,13 @@ export default function ClaimPreviewPage({
             <p className="text-sm text-zinc-600">Orders: {formInput.travelOrderNumber}</p>
           </div>
 
+          <a
+            href={`/api/claim/${token}/generate-pdf`}
+            className="flex items-center justify-center border border-zinc-950 bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:border-teal-800 hover:bg-teal-800"
+          >
+            Generate official PDF
+          </a>
+
           {errors.length > 0 && (
             <FindingGroup title={`${errors.length} error${errors.length === 1 ? "" : "s"}`} findings={errors} color="red" />
           )}

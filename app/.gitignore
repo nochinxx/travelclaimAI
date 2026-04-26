@@ -41,3 +41,9 @@ yarn-error.log*
 next-env.d.ts
 
 .pnpm-store/
+
+# generated PDF experiments
+.codex-pdf-preview/
+
+# python local caches
+__pycache__/
