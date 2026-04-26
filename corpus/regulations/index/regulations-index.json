@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-25T22:51:24.951Z",
+  "generatedAt": "2026-04-26T05:11:23.678Z",
   "sourceManifestVersion": 1,
   "vectorizer": {
     "kind": "hashed-tfidf",

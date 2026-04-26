@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 import type { RagSearchResult } from "@/lib/rag/types";
 
 type SearchState =
@@ -66,6 +67,17 @@ export function SearchPanel() {
             <p className="mt-3 text-sm leading-6 text-zinc-600">
               Search the local Joint Travel Regulations and service-specific policy PDFs.
             </p>
+            <div className="mt-4 flex flex-col gap-1.5">
+              <Link href="/claim/new" className="text-sm font-medium text-teal-700 hover:text-teal-900">
+                → New travel authorization (CO)
+              </Link>
+              <Link href="/chat" className="text-sm font-medium text-teal-700 hover:text-teal-900">
+                → Claim assistant (soldier)
+              </Link>
+              <Link href="/dd1351" className="text-sm font-medium text-teal-700 hover:text-teal-900">
+                → DD 1351-2 form preview
+              </Link>
+            </div>
           </div>
 
           <form className="flex flex-col gap-3" onSubmit={onSubmit}>
