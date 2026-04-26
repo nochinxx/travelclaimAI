@@ -62,6 +62,13 @@ export default function Dd1351Page() {
             </p>
           </div>
 
+          <a
+            className="border border-zinc-950 bg-zinc-950 px-4 py-3 text-center text-sm font-semibold text-white transition hover:border-teal-800 hover:bg-teal-800"
+            href="/api/dd1351/demo-pdf"
+          >
+            Download demo-filled PDF
+          </a>
+
           {/* Review flags */}
           {blocksNeedingReview.length > 0 && (
             <div className="flex flex-col gap-2 border border-amber-200 bg-amber-50 p-4">
