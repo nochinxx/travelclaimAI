@@ -197,7 +197,7 @@ Do not change dimensions without a full DB migration and re-ingestion. Keep cons
 | `GET` | `/api/claim/[token]` | Fetch a claim by share token |
 | `PATCH` | `/api/claim/[token]` | Update soldier data. Body: `{ soldierData, status? }` |
 | `GET` | `/api/claim/[token]/attachments` | List claim attachments and signed storage URLs |
-| `POST` | `/api/claim/[token]/attachments` | Upload a receipt, store it in Supabase Storage, create a `claim_attachments` row, and run OCR for supported images |
+| `POST` | `/api/claim/[token]/attachments` | Upload a receipt or supporting document. Receipts run OCR; supporting documents are stored only. Body is multipart with `file` and optional `attachmentType` |
 | `PATCH` | `/api/claim/[token]/attachments/[attachmentId]/confirm` | Save edited receipt data and append/update `soldier_data.expenses` |
 | `GET` | `/api/claim/[token]/preview` | Build the current claim preview payload |
 | `GET` | `/api/claim/[token]/generate-pdf` | Generate/fill DD1351-2 PDF for a claim |
@@ -210,21 +210,29 @@ Do not change dimensions without a full DB migration and re-ingestion. Keep cons
 
 ## Receipt Attachments
 
-Migration: `../supabase/migrations/20260426020000_claim_attachments.sql`
+Migrations:
+- `../supabase/migrations/20260426020000_claim_attachments.sql`
+- `../supabase/migrations/20260426030000_claim_attachment_type.sql`
 
 - Table: `claim_attachments`
   - Links each upload to `travel_claims.id`.
+  - `attachment_type` is `receipt` or `supporting_document`.
   - Stores Supabase Storage path, file metadata, OCR text, extracted data, confirmed data, and status.
   - Status values: `uploaded`, `ocr_complete`, `needs_confirmation`, `confirmed`, `failed`.
 - Storage bucket: `claim-attachments`
   - Private bucket.
-  - Upload path: `claims/{claim_id}/attachments/{timestamp}-{safe_filename}`.
+  - Receipt upload path: `claims/{claim_id}/attachments/{timestamp}-{safe_filename}`.
+  - Supporting document upload path: `claims/{claim_id}/supporting-documents/{timestamp}-{safe_filename}`.
   - API returns short-lived signed URLs for display.
 - Confirmation flow:
   - Soldier uploads receipt on `/claim/[token]`.
   - API uploads the file and OCRs supported images with Google Cloud Vision.
   - Soldier edits/accepts extracted fields.
   - Confirmation writes `claim_attachments.confirmed_data`, sets status `confirmed`, and appends/updates the matching `soldier_data.expenses` item with `attachment_id`.
+- Supporting document flow:
+  - Soldier clicks "Add supporting document" on `/claim/[token]`.
+  - API uploads the file with `attachment_type = 'supporting_document'`.
+  - No OCR, parsing, expense creation, or form-field updates happen for supporting documents.
 
 Block 18 rules used by the parser:
 - Lodging receipts are required regardless of amount.

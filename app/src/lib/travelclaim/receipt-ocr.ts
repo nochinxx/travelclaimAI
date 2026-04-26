@@ -12,6 +12,10 @@ export const ACCEPTED_RECEIPT_FILE_TYPES = new Set([
   "application/pdf",
 ]);
 
+export const ACCEPTED_SUPPORTING_DOCUMENT_FILE_TYPES = new Set([
+  ...ACCEPTED_RECEIPT_FILE_TYPES,
+]);
+
 export type ReceiptExtraction = {
   date: string;
   merchant: string;
@@ -46,6 +50,18 @@ export function validateReceiptFile(file: File) {
 
   if (file.size > MAX_RECEIPT_FILE_SIZE) {
     return "Receipt file must be 10 MB or smaller.";
+  }
+
+  return null;
+}
+
+export function validateSupportingDocumentFile(file: File) {
+  if (!ACCEPTED_SUPPORTING_DOCUMENT_FILE_TYPES.has(file.type)) {
+    return "Upload a JPG, PNG, WebP, HEIC, or PDF document.";
+  }
+
+  if (file.size > MAX_RECEIPT_FILE_SIZE) {
+    return "Document file must be 10 MB or smaller.";
   }
 
   return null;

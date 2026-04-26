@@ -6,6 +6,7 @@ import {
   parseReceiptText,
   sanitizeReceiptFileName,
   validateReceiptFile,
+  validateSupportingDocumentFile,
 } from "@/lib/travelclaim/receipt-ocr";
 
 export const runtime = "nodejs";
@@ -15,6 +16,7 @@ type ClaimAttachmentRow = {
   id: string;
   claim_id: string;
   storage_path: string;
+  attachment_type?: string | null;
   file_name: string | null;
   file_type: string | null;
   file_size: number | null;
@@ -73,15 +75,20 @@ export async function POST(
     const formData = await request.formData();
     const file = formData.get("file");
     if (!(file instanceof File)) {
-      return Response.json({ error: "A receipt file is required." }, { status: 400 });
+      return Response.json({ error: "An attachment file is required." }, { status: 400 });
     }
 
-    const validationError = validateReceiptFile(file);
+    const attachmentType = normalizeAttachmentType(formData.get("attachmentType"));
+    const validationError =
+      attachmentType === "supporting_document"
+        ? validateSupportingDocumentFile(file)
+        : validateReceiptFile(file);
     if (validationError) return Response.json({ error: validationError }, { status: 400 });
 
     const fileBytes = new Uint8Array(await file.arrayBuffer());
     const safeName = sanitizeReceiptFileName(file.name);
-    const storagePath = `claims/${claim.id}/attachments/${Date.now()}-${safeName}`;
+    const folder = attachmentType === "supporting_document" ? "supporting-documents" : "attachments";
+    const storagePath = `claims/${claim.id}/${folder}/${Date.now()}-${safeName}`;
 
     const upload = await supabase.storage
       .from(CLAIM_ATTACHMENTS_BUCKET)
@@ -97,6 +104,7 @@ export async function POST(
       .insert({
         claim_id: claim.id,
         storage_path: storagePath,
+        attachment_type: attachmentType,
         file_name: file.name,
         file_type: file.type,
         file_size: file.size,
@@ -106,6 +114,18 @@ export async function POST(
       .single();
 
     if (inserted.error) throw inserted.error;
+
+    if (attachmentType === "supporting_document") {
+      return Response.json({
+        attachment: {
+          ...toAttachment(inserted.data as ClaimAttachmentRow),
+          signedUrl: await createSignedUrl(
+            supabase,
+            (inserted.data as ClaimAttachmentRow).storage_path,
+          ),
+        },
+      });
+    }
 
     const updated = await runOcrAndUpdateAttachment(
       supabase,
@@ -214,6 +234,7 @@ function toAttachment(row: ClaimAttachmentRow) {
     id: row.id,
     claimId: row.claim_id,
     storagePath: row.storage_path,
+    attachmentType: row.attachment_type ?? "receipt",
     fileName: row.file_name,
     fileType: row.file_type,
     fileSize: row.file_size,
@@ -224,6 +245,10 @@ function toAttachment(row: ClaimAttachmentRow) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function normalizeAttachmentType(value: FormDataEntryValue | null) {
+  return value === "supporting_document" ? "supporting_document" : "receipt";
 }
 
 function errorMessage(error: unknown, fallback: string) {

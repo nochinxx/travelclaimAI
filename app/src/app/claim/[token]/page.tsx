@@ -30,6 +30,7 @@ type ReceiptDraft = {
 
 type ClaimAttachment = {
   id: string;
+  attachmentType: "receipt" | "supporting_document";
   fileName: string | null;
   fileType: string | null;
   fileSize: number | null;
@@ -212,7 +213,10 @@ export default function SoldierClaimPage({
     }));
   }
 
-  async function uploadReceipt(file: File | null) {
+  async function uploadAttachment(
+    file: File | null,
+    attachmentType: ClaimAttachment["attachmentType"],
+  ) {
     if (!file || uploading) return;
 
     setUploading(true);
@@ -220,6 +224,7 @@ export default function SoldierClaimPage({
 
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("attachmentType", attachmentType);
 
     try {
       const response = await fetch(`/api/claim/${token}/attachments`, {
@@ -308,6 +313,12 @@ export default function SoldierClaimPage({
   const currentClaim = claim;
   const auth = currentClaim.authData as TravelAuthorization;
   const syntheticProfile = findSyntheticSoldier(auth.travelerName);
+  const receiptAttachments = attachments.filter(
+    (attachment) => attachment.attachmentType !== "supporting_document",
+  );
+  const supportingDocuments = attachments.filter(
+    (attachment) => attachment.attachmentType === "supporting_document",
+  );
 
   async function prefill() {
     if (!syntheticProfile) return;
@@ -437,10 +448,10 @@ export default function SoldierClaimPage({
 
             <div className="border-t border-zinc-200 pt-4">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
-                Receipts
+                Attachments
               </p>
               <p className="mt-1 text-xs leading-5 text-zinc-500">
-                Upload receipt images for Block 18 expenses. PDFs are stored, but image uploads work best for OCR.
+                Upload receipt images for Block 18, or add supplemental documents for the voucher package.
               </p>
               <label className="mt-3 block cursor-pointer border border-dashed border-zinc-300 bg-zinc-50 px-3 py-3 text-center text-xs font-semibold text-zinc-700 transition hover:border-teal-700 hover:text-teal-700">
                 {uploading ? "Uploading..." : "Upload receipt"}
@@ -452,7 +463,22 @@ export default function SoldierClaimPage({
                   disabled={uploading}
                   onChange={(event) => {
                     const file = event.target.files?.[0] ?? null;
-                    void uploadReceipt(file);
+                    void uploadAttachment(file, "receipt");
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </label>
+              <label className="mt-2 block cursor-pointer border border-dashed border-zinc-300 bg-white px-3 py-3 text-center text-xs font-semibold text-zinc-700 transition hover:border-teal-700 hover:text-teal-700">
+                {uploading ? "Uploading..." : "Add supporting document"}
+                <input
+                  className="hidden"
+                  type="file"
+                  accept="image/*,application/pdf"
+                  capture="environment"
+                  disabled={uploading}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    void uploadAttachment(file, "supporting_document");
                     event.currentTarget.value = "";
                   }}
                 />
@@ -495,12 +521,12 @@ export default function SoldierClaimPage({
                 </div>
               )}
 
-              {attachments.length > 0 && (
+              {receiptAttachments.length > 0 && (
                 <div className="flex flex-col gap-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-400">
                     Uploaded receipts
                   </p>
-                  {attachments.map((attachment) => (
+                  {receiptAttachments.map((attachment) => (
                     <ReceiptAttachmentCard
                       attachment={attachment}
                       draft={attachmentDrafts[attachment.id]}
@@ -510,6 +536,17 @@ export default function SoldierClaimPage({
                         updateAttachmentDraft(attachment.id, field, value)
                       }
                     />
+                  ))}
+                </div>
+              )}
+
+              {supportingDocuments.length > 0 && (
+                <div className="flex flex-col gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-400">
+                    Supporting documents
+                  </p>
+                  {supportingDocuments.map((attachment) => (
+                    <SupportingDocumentCard attachment={attachment} key={attachment.id} />
                   ))}
                 </div>
               )}
@@ -734,6 +771,34 @@ function ReceiptAttachmentCard({
           {isConfirmed ? "Update confirmed expense" : "Confirm expense"}
         </button>
       </div>
+    </article>
+  );
+}
+
+function SupportingDocumentCard({ attachment }: Readonly<{ attachment: ClaimAttachment }>) {
+  return (
+    <article className="border border-zinc-200 bg-white p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-sm font-semibold text-zinc-800">
+          {attachment.fileName ?? "Supporting document"}
+        </p>
+        <span className="rounded-full border border-zinc-200 px-2 py-0.5 text-xs text-zinc-500">
+          supplemental
+        </span>
+        {attachment.signedUrl && (
+          <a
+            className="ml-auto text-xs font-semibold text-teal-700 hover:underline"
+            href={attachment.signedUrl}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            View file
+          </a>
+        )}
+      </div>
+      <p className="mt-2 text-xs text-zinc-500">
+        Stored with this claim package. No OCR or form fields are extracted.
+      </p>
     </article>
   );
 }

@@ -2,6 +2,8 @@ create table claim_attachments (
   id uuid primary key default gen_random_uuid(),
   claim_id uuid not null references travel_claims (id) on delete cascade,
   storage_path text not null,
+  attachment_type text not null default 'receipt'
+    check (attachment_type in ('receipt', 'supporting_document')),
   file_name text,
   file_type text,
   file_size integer,
@@ -16,6 +18,7 @@ create table claim_attachments (
 
 create index claim_attachments_claim_id_idx on claim_attachments (claim_id);
 create index claim_attachments_status_idx on claim_attachments (status);
+create index claim_attachments_attachment_type_idx on claim_attachments (attachment_type);
 
 alter table claim_attachments enable row level security;
 
