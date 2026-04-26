@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { MarkdownMessage } from "@/components/markdown-message";
+import { SYNTHETIC_SOLDIERS } from "@/lib/travelclaim/synthetic-soldiers";
 import type { RagSearchResult } from "@/lib/rag/types";
 
 type UIMessage = {
@@ -13,58 +14,6 @@ type UIMessage = {
 };
 
 type ApiMessage = { role: "user" | "assistant"; content: string };
-
-type SyntheticSoldier = {
-  id: string;
-  label: string;
-  branch: string;
-  prompt: string;
-};
-
-const SYNTHETIC_SOLDIERS: SyntheticSoldier[] = [
-  {
-    id: "army-e4",
-    label: "SPC Doe · Army E-4 · Fort Liberty",
-    branch: "army",
-    prompt:
-      "I need to authorize TDY for DOE, ALEX M, grade E-4, 1st Battalion 508th PIR 82nd Airborne Division at Fort Liberty, NC. Branch: Army.",
-  },
-  {
-    id: "af-o3",
-    label: "Capt Smith · Air Force O-3 · Langley",
-    branch: "air-force",
-    prompt:
-      "I need to authorize TDY for SMITH, JORDAN R, grade O-3, 94th Fighter Squadron 1st Fighter Wing at Langley AFB, VA. Branch: Air Force.",
-  },
-  {
-    id: "navy-e6",
-    label: "PO1 Garcia · Navy E-6 · Norfolk",
-    branch: "navy",
-    prompt:
-      "I need to authorize TDY for GARCIA, MARIA L, grade E-6, USS Gerald R. Ford CVN-78 at Naval Station Norfolk, VA. Branch: Navy.",
-  },
-  {
-    id: "marines-e5",
-    label: "Sgt Johnson · Marines E-5 · Camp Lejeune",
-    branch: "marines",
-    prompt:
-      "I need to authorize TDY for JOHNSON, MARCUS T, grade E-5, 1st Battalion 6th Marines 2nd Marine Division at Camp Lejeune, NC. Branch: Marine Corps.",
-  },
-  {
-    id: "army-gs12",
-    label: "Ms. Chen · Army Civilian GS-12 · Pentagon",
-    branch: "army",
-    prompt:
-      "I need to authorize TDY for CHEN, PATRICIA A, grade GS-12, Office of the Deputy Chief of Staff G-4 at Pentagon, Arlington, VA. Branch: Army (civilian).",
-  },
-  {
-    id: "coast-guard-e7",
-    label: "CPO Rivera · Coast Guard E-7 · Cape Cod",
-    branch: "coast-guard",
-    prompt:
-      "I need to authorize TDY for RIVERA, JAMES E, grade E-7, Sector Southeastern New England at Air Station Cape Cod, MA. Branch: Coast Guard.",
-  },
-];
 
 export default function NewClaimPage() {
   const [messages, setMessages] = useState<UIMessage[]>([]);
@@ -207,7 +156,7 @@ export default function NewClaimPage() {
                   {SYNTHETIC_SOLDIERS.map((s) => (
                     <button
                       key={s.id}
-                      onClick={() => void send(s.prompt)}
+                      onClick={() => void send(s.coPrompt)}
                       className="flex flex-col gap-0.5 border border-zinc-200 bg-white px-4 py-3 text-left transition hover:border-teal-700"
                     >
                       <span className="text-sm font-medium text-zinc-800">{s.label}</span>

@@ -3,6 +3,7 @@
 import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { MarkdownMessage } from "@/components/markdown-message";
+import { findSyntheticSoldier } from "@/lib/travelclaim/synthetic-soldiers";
 import type { TravelClaim, TravelAuthorization } from "@/lib/travelclaim/claim-types";
 import type { RagSearchResult } from "@/lib/rag/types";
 
@@ -29,6 +30,7 @@ export default function SoldierClaimPage({
   const [loading, setLoading] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
+  const [prefilling, setPrefilling] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const messageIdRef = useRef(0);
 
@@ -143,6 +145,25 @@ export default function SoldierClaimPage({
   }
 
   const auth = claim.authData as TravelAuthorization;
+  const syntheticProfile = findSyntheticSoldier(auth.travelerName);
+
+  async function prefill() {
+    if (!syntheticProfile) return;
+    setPrefilling(true);
+    try {
+      await fetch(`/api/claim/${token}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          soldierData: syntheticProfile.soldierData,
+          status: "in_progress",
+        }),
+      });
+      globalThis.location.href = `/claim/${token}/preview`;
+    } finally {
+      setPrefilling(false);
+    }
+  }
 
   // ── Main layout ───────────────────────────────────────────────────────────
 
@@ -158,10 +179,34 @@ export default function SoldierClaimPage({
         </Link>
         <span className="text-zinc-300">|</span>
         <h1 className="text-sm font-semibold">Your Travel Voucher</h1>
-        <span className="ml-auto rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700">
-          {claim.status === "authorized" ? "Authorized — awaiting your info" : claim.status}
-        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <Link
+            href={`/claim/${token}/preview`}
+            className="text-xs text-zinc-500 underline-offset-2 hover:text-teal-700 hover:underline"
+          >
+            View form →
+          </Link>
+          <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700">
+            {claim.status === "authorized" ? "Authorized — awaiting your info" : claim.status}
+          </span>
+        </div>
       </header>
+
+      {/* Pre-fill test data banner */}
+      {syntheticProfile && (
+        <div className="shrink-0 flex items-center justify-between gap-4 border-b border-zinc-200 bg-zinc-50 px-5 py-3">
+          <p className="text-xs text-zinc-600">
+            Test profile detected — pre-fill all of <span className="font-semibold">{syntheticProfile.label}</span>&apos;s data instantly.
+          </p>
+          <button
+            onClick={() => void prefill()}
+            disabled={prefilling}
+            className="shrink-0 border border-zinc-950 bg-zinc-950 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-800 disabled:bg-zinc-400"
+          >
+            {prefilling ? "Filling..." : "Pre-fill & view form"}
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-1 overflow-hidden lg:flex-row flex-col">
         {/* Authorization panel */}
