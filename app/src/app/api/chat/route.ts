@@ -10,6 +10,8 @@ export async function POST(request: Request) {
     messages?: unknown;
     role?: unknown;
     authData?: unknown;
+    branch?: unknown;
+    claimToken?: unknown;
   } | null;
 
   if (!Array.isArray(body?.messages) || body.messages.length === 0) {
@@ -26,12 +28,13 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid message format." }, { status: 400 });
   }
 
+  type ValidRole = "co" | "soldier" | "general";
+  const validRoles: ValidRole[] = ["co", "soldier", "general"];
   const options: ChatOptions = {
-    role:
-      body.role === "co" || body.role === "soldier" || body.role === "general"
-        ? body.role
-        : "general",
+    role: validRoles.includes(body.role as ValidRole) ? (body.role as ValidRole) : "general",
     authData: body.authData ? (body.authData as TravelAuthorization) : null,
+    branch: typeof body.branch === "string" ? body.branch : null,
+    claimToken: typeof body.claimToken === "string" ? body.claimToken : null,
   };
 
   try {

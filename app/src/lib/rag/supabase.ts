@@ -26,6 +26,7 @@ export async function searchSupabaseRegulations(
   options: {
     authorization?: string | null;
     limit?: number;
+    branch?: string | null;
   } = {},
 ): Promise<RagSearchResult[]> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -48,6 +49,7 @@ export async function searchSupabaseRegulations(
       query_embedding: embedding,
       match_threshold: 0.2,
       match_count: options.limit ?? 6,
+      branch_filter: options.branch ?? null,
     }),
   });
 

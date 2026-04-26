@@ -1,10 +1,11 @@
 "use client";
 
-import { FormEvent, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import type { RagSearchResult } from "@/lib/rag/types";
 
 type UIMessage = {
+  id: string;
   role: "user" | "assistant";
   content: string;
   ragResults?: RagSearchResult[];
@@ -12,10 +13,56 @@ type UIMessage = {
 
 type ApiMessage = { role: "user" | "assistant"; content: string };
 
-const STARTERS = [
-  "I need to authorize TDY travel for a soldier to Washington DC",
-  "Open a travel auth for a commercial flight + rental car",
-  "Authorize POV travel to a nearby installation",
+type SyntheticSoldier = {
+  id: string;
+  label: string;
+  branch: string;
+  prompt: string;
+};
+
+const SYNTHETIC_SOLDIERS: SyntheticSoldier[] = [
+  {
+    id: "army-e4",
+    label: "SPC Doe · Army E-4 · Fort Liberty",
+    branch: "army",
+    prompt:
+      "I need to authorize TDY for DOE, ALEX M, grade E-4, 1st Battalion 508th PIR 82nd Airborne Division at Fort Liberty, NC. Branch: Army.",
+  },
+  {
+    id: "af-o3",
+    label: "Capt Smith · Air Force O-3 · Langley",
+    branch: "air-force",
+    prompt:
+      "I need to authorize TDY for SMITH, JORDAN R, grade O-3, 94th Fighter Squadron 1st Fighter Wing at Langley AFB, VA. Branch: Air Force.",
+  },
+  {
+    id: "navy-e6",
+    label: "PO1 Garcia · Navy E-6 · Norfolk",
+    branch: "navy",
+    prompt:
+      "I need to authorize TDY for GARCIA, MARIA L, grade E-6, USS Gerald R. Ford CVN-78 at Naval Station Norfolk, VA. Branch: Navy.",
+  },
+  {
+    id: "marines-e5",
+    label: "Sgt Johnson · Marines E-5 · Camp Lejeune",
+    branch: "marines",
+    prompt:
+      "I need to authorize TDY for JOHNSON, MARCUS T, grade E-5, 1st Battalion 6th Marines 2nd Marine Division at Camp Lejeune, NC. Branch: Marine Corps.",
+  },
+  {
+    id: "army-gs12",
+    label: "Ms. Chen · Army Civilian GS-12 · Pentagon",
+    branch: "army",
+    prompt:
+      "I need to authorize TDY for CHEN, PATRICIA A, grade GS-12, Office of the Deputy Chief of Staff G-4 at Pentagon, Arlington, VA. Branch: Army (civilian).",
+  },
+  {
+    id: "coast-guard-e7",
+    label: "CPO Rivera · Coast Guard E-7 · Cape Cod",
+    branch: "coast-guard",
+    prompt:
+      "I need to authorize TDY for RIVERA, JAMES E, grade E-7, Sector Southeastern New England at Air Station Cape Cod, MA. Branch: Coast Guard.",
+  },
 ];
 
 export default function NewClaimPage() {
@@ -37,7 +84,7 @@ export default function NewClaimPage() {
     setInput("");
     setError(null);
 
-    const userMessage: UIMessage = { role: "user", content: trimmed };
+    const userMessage: UIMessage = { id: `u-${Date.now()}`, role: "user", content: trimmed };
     const next = [...messages, userMessage];
     setMessages(next);
     setLoading(true);
@@ -69,6 +116,7 @@ export default function NewClaimPage() {
       setMessages((prev) => [
         ...prev,
         {
+          id: `a-${Date.now()}`,
           role: "assistant",
           content: payload.text,
           ragResults: payload.ragResults?.length ? payload.ragResults : undefined,
@@ -82,14 +130,13 @@ export default function NewClaimPage() {
     }
   }
 
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
+  function onSubmit(event: { preventDefault(): void }) {
     event.preventDefault();
     void send();
   }
 
-  const claimUrl = shareToken
-    ? `${typeof window !== "undefined" ? window.location.origin : ""}/claim/${shareToken}`
-    : null;
+  const origin = globalThis.window === undefined ? "" : globalThis.location.origin;
+  const claimUrl = shareToken ? `${origin}/claim/${shareToken}` : null;
 
   return (
     <div className="flex h-screen flex-col bg-stone-50 text-zinc-950">
@@ -140,27 +187,55 @@ export default function NewClaimPage() {
       <main className="flex-1 overflow-y-auto px-4 py-6">
         <div className="mx-auto flex max-w-2xl flex-col gap-5">
           {messages.length === 0 && (
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-5">
               <p className="text-sm leading-6 text-zinc-500">
-                Describe the travel you want to authorize. I&apos;ll check it against JTR, collect the required fields, and generate a link for the soldier.
+                Describe the travel you want to authorize, or pick a test soldier below to start with their info pre-loaded. I&apos;ll check everything against JTR and generate a shareable link.
               </p>
-              <div className="flex flex-col gap-2">
-                {STARTERS.map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => void send(s)}
-                    className="border border-zinc-200 bg-white px-4 py-3 text-left text-sm text-zinc-700 transition hover:border-teal-700 hover:text-zinc-950"
-                  >
-                    {s}
-                  </button>
-                ))}
+
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                  Test soldiers — click to load
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {SYNTHETIC_SOLDIERS.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => void send(s.prompt)}
+                      className="flex flex-col gap-0.5 border border-zinc-200 bg-white px-4 py-3 text-left transition hover:border-teal-700"
+                    >
+                      <span className="text-sm font-medium text-zinc-800">{s.label}</span>
+                      <span className="text-xs capitalize text-zinc-400">{s.branch.replace("-", " ")}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                  Or describe manually
+                </p>
+                <div className="flex flex-col gap-2">
+                  {[
+                    "I need to authorize TDY travel for a soldier to Washington DC",
+                    "Open a travel auth for a commercial flight + rental car",
+                    "Authorize POV travel to a nearby installation",
+                  ].map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => void send(s)}
+                      className="border border-zinc-200 bg-white px-4 py-3 text-left text-sm text-zinc-700 transition hover:border-teal-700 hover:text-zinc-950"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
 
-          {messages.map((message, index) => (
+          {messages.map((message) => (
             <div
-              key={index}
+              key={message.id}
               className={`flex flex-col gap-2 ${message.role === "user" ? "items-end" : "items-start"}`}
             >
               <div

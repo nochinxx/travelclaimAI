@@ -1,8 +1,8 @@
 import { hasSupabaseRagConfig, searchSupabaseRegulations } from "@/lib/rag/supabase";
 import { searchRegulations } from "@/lib/rag/search";
-import { createClaim, generateShareToken } from "@/lib/travelclaim/claims-client";
+import { createClaim, generateShareToken, updateClaimSoldierData } from "@/lib/travelclaim/claims-client";
 import type { RagSearchResult } from "@/lib/rag/types";
-import type { TravelAuthorization } from "@/lib/travelclaim/claim-types";
+import type { TravelAuthorization, SoldierData } from "@/lib/travelclaim/claim-types";
 
 const GEMINI_CHAT_MODEL = process.env.GEMINI_CHAT_MODEL ?? "gemini-2.5-flash";
 const MAX_TOOL_ITERATIONS = 6;
@@ -124,6 +124,8 @@ export type ChatRole = "general" | "co" | "soldier";
 export type ChatOptions = {
   role?: ChatRole;
   authData?: TravelAuthorization | null;
+  branch?: string | null;
+  claimToken?: string | null;
 };
 
 export type ChatMessage = {
@@ -135,6 +137,7 @@ export type ChatReply = {
   text: string;
   ragResults: RagSearchResult[];
   createdClaimToken?: string;
+  soldierDataSaved?: boolean;
 };
 
 // ─── Gemini API types ─────────────────────────────────────────────────────────
@@ -167,6 +170,26 @@ const SEARCH_REGULATIONS_TOOL = {
       },
     },
     required: ["query"],
+  },
+};
+
+const UPDATE_CLAIM_TOOL = {
+  name: "update_claim_fields",
+  description:
+    "Save soldier-confirmed data to the claim. Call this whenever the soldier confirms one or more fields — do not wait until everything is collected. Can be called multiple times.",
+  parameters: {
+    type: "object",
+    properties: {
+      dodIdPlaceholder: { type: "string", description: "DoD ID last 4 or SSN placeholder" },
+      mailingAddress: { type: "string" },
+      email: { type: "string" },
+      phone: { type: "string" },
+      eftSelected: { type: "boolean" },
+      gtccUsed: { type: "boolean" },
+      gtccSplitDisbursementAmount: { type: "number" },
+      deductibleMeals: { type: "string" },
+      claimantSignatureDate: { type: "string", description: "YYYY-MM-DD, on or after last travel day" },
+    },
   },
 };
 
@@ -249,14 +272,87 @@ async function callGemini(
   return response.json() as Promise<GeminiApiResponse>;
 }
 
-async function executeSearch(query: string): Promise<RagSearchResult[]> {
+// ─── Tool handlers ────────────────────────────────────────────────────────────
+
+type ToolResult = {
+  response: Record<string, unknown>;
+  ragResults?: RagSearchResult[];
+  createdClaimToken?: string;
+  soldierDataSaved?: boolean;
+};
+
+async function handleSearchRegulations(
+  args: Record<string, unknown>,
+  branch?: string | null,
+): Promise<ToolResult> {
+  const query = typeof args.query === "string" ? args.query : "";
   try {
-    return hasSupabaseRagConfig()
-      ? await searchSupabaseRegulations(query, { limit: 5 })
+    const results = hasSupabaseRagConfig()
+      ? await searchSupabaseRegulations(query, { limit: 5, branch: branch ?? null })
       : searchRegulations(query, 5);
+    return {
+      response: {
+        results: results.map((r) => ({
+          text: r.text,
+          source: `${r.citation.title}, p. ${r.citation.page}`,
+          score: r.score,
+        })),
+      },
+      ragResults: results,
+    };
   } catch {
-    return [];
+    return { response: { results: [] } };
   }
+}
+
+async function handleCreateAuthorization(args: Record<string, unknown>): Promise<ToolResult> {
+  try {
+    const token = generateShareToken();
+    await createClaim(args as unknown as TravelAuthorization, token);
+    return { response: { success: true, shareToken: token }, createdClaimToken: token };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return { response: { success: false, error: message } };
+  }
+}
+
+async function handleUpdateClaim(
+  args: Record<string, unknown>,
+  claimToken?: string | null,
+): Promise<ToolResult> {
+  if (!claimToken) {
+    return { response: { success: false, error: "No claim token in context." } };
+  }
+  try {
+    await updateClaimSoldierData(claimToken, args as unknown as SoldierData, "in_progress");
+    return { response: { success: true }, soldierDataSaved: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return { response: { success: false, error: message } };
+  }
+}
+
+async function dispatchTool(
+  name: string,
+  args: Record<string, unknown>,
+  options: ChatOptions,
+): Promise<ToolResult> {
+  if (name === "search_regulations") return handleSearchRegulations(args, options.branch);
+  if (name === "create_authorization") return handleCreateAuthorization(args);
+  if (name === "update_claim_fields") return handleUpdateClaim(args, options.claimToken);
+  return { response: { error: `Unknown tool: ${name}` } };
+}
+
+function resolveSystemPrompt(role: ChatRole, authData: TravelAuthorization | null): string {
+  if (role === "co") return CO_SYSTEM_PROMPT;
+  if (role === "soldier" && authData) return buildSoldierSystemPrompt(authData);
+  return GENERAL_SYSTEM_PROMPT;
+}
+
+function resolveTools(role: ChatRole): object[] {
+  if (role === "co") return [SEARCH_REGULATIONS_TOOL, CREATE_AUTHORIZATION_TOOL];
+  if (role === "soldier") return [SEARCH_REGULATIONS_TOOL, UPDATE_CLAIM_TOOL];
+  return [SEARCH_REGULATIONS_TOOL];
 }
 
 export async function runGeminiChat(
@@ -265,22 +361,13 @@ export async function runGeminiChat(
 ): Promise<ChatReply> {
   const role = options.role ?? "general";
   const authData = options.authData ?? null;
-
-  const systemPrompt =
-    role === "co"
-      ? CO_SYSTEM_PROMPT
-      : role === "soldier" && authData
-        ? buildSoldierSystemPrompt(authData)
-        : GENERAL_SYSTEM_PROMPT;
-
-  const tools =
-    role === "co"
-      ? [SEARCH_REGULATIONS_TOOL, CREATE_AUTHORIZATION_TOOL]
-      : [SEARCH_REGULATIONS_TOOL];
+  const systemPrompt = resolveSystemPrompt(role, authData);
+  const tools = resolveTools(role);
 
   const contents = toGeminiHistory(messages);
   const ragResults: RagSearchResult[] = [];
   let createdClaimToken: string | undefined;
+  let soldierDataSaved = false;
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
     const response = await callGemini(contents, systemPrompt, tools);
@@ -302,67 +389,22 @@ export async function runGeminiChat(
         .filter((p): p is GeminiTextPart => "text" in p)
         .map((p) => p.text)
         .join("");
-      return { text, ragResults, createdClaimToken };
+      return { text, ragResults, createdClaimToken, soldierDataSaved };
     }
 
     contents.push({ role: "model", parts });
 
     const { name, args } = functionCallPart.functionCall;
+    const result = await dispatchTool(name, args, options);
 
-    if (name === "search_regulations") {
-      const query = typeof args.query === "string" ? args.query : "";
-      const results = await executeSearch(query);
-      ragResults.push(...results);
+    if (result.ragResults) ragResults.push(...result.ragResults);
+    if (result.createdClaimToken) createdClaimToken = result.createdClaimToken;
+    if (result.soldierDataSaved) soldierDataSaved = true;
 
-      contents.push({
-        role: "user",
-        parts: [
-          {
-            functionResponse: {
-              name,
-              response: {
-                results: results.map((r) => ({
-                  text: r.text,
-                  source: `${r.citation.title}, p. ${r.citation.page}`,
-                  score: r.score,
-                })),
-              },
-            },
-          },
-        ],
-      });
-    } else if (name === "create_authorization") {
-      try {
-        const token = generateShareToken();
-        await createClaim(args as unknown as TravelAuthorization, token);
-        createdClaimToken = token;
-
-        contents.push({
-          role: "user",
-          parts: [
-            {
-              functionResponse: {
-                name,
-                response: { success: true, shareToken: token },
-              },
-            },
-          ],
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Unknown error";
-        contents.push({
-          role: "user",
-          parts: [
-            {
-              functionResponse: {
-                name,
-                response: { success: false, error: message },
-              },
-            },
-          ],
-        });
-      }
-    }
+    contents.push({
+      role: "user",
+      parts: [{ functionResponse: { name, response: result.response } }],
+    });
   }
 
   const final = await callGemini(contents, systemPrompt, tools);
@@ -372,5 +414,5 @@ export async function runGeminiChat(
       .map((p) => p.text)
       .join("") ?? "Unable to generate a response. Please try again.";
 
-  return { text, ragResults, createdClaimToken };
+  return { text, ragResults, createdClaimToken, soldierDataSaved };
 }

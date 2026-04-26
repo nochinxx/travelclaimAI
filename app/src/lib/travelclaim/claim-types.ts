@@ -7,7 +7,10 @@ import type {
 
 // What the CO provides when creating the authorization.
 // Maps to the "pre-known" blocks of DD 1351-2.
+export type ServiceBranch = "army" | "navy" | "air-force" | "marines" | "coast-guard" | "joint";
+
 export type TravelAuthorization = {
+  branch: ServiceBranch;
   travelerName: string;           // "DOE, ALEX M"
   travelerGrade: string;          // "E-4"
   travelerOrganization: string;

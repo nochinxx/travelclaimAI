@@ -1,12 +1,12 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { use } from "react";
 import type { TravelClaim, TravelAuthorization } from "@/lib/travelclaim/claim-types";
 import type { RagSearchResult } from "@/lib/rag/types";
 
 type UIMessage = {
+  id: string;
   role: "user" | "assistant";
   content: string;
   ragResults?: RagSearchResult[];
@@ -16,9 +16,9 @@ type ApiMessage = { role: "user" | "assistant"; content: string };
 
 export default function SoldierClaimPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ token: string }>;
-}) {
+}>) {
   const { token } = use(params);
 
   const [claim, setClaim] = useState<TravelClaim | null>(null);
@@ -27,6 +27,7 @@ export default function SoldierClaimPage({
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -53,7 +54,7 @@ export default function SoldierClaimPage({
     setInput("");
     setChatError(null);
 
-    const userMessage: UIMessage = { role: "user", content: trimmed };
+    const userMessage: UIMessage = { id: `u-${Date.now()}`, role: "user", content: trimmed };
     const next = [...messages, userMessage];
     setMessages(next);
     setLoading(true);
@@ -72,6 +73,8 @@ export default function SoldierClaimPage({
           messages: apiMessages,
           role: "soldier",
           authData: claim.authData,
+          branch: claim.authData.branch ?? null,
+          claimToken: token,
         }),
       });
 
@@ -82,9 +85,14 @@ export default function SoldierClaimPage({
         return;
       }
 
+      if (payload.soldierDataSaved) {
+        setLastSaved(new Date().toLocaleTimeString());
+      }
+
       setMessages((prev) => [
         ...prev,
         {
+          id: `a-${Date.now()}`,
           role: "assistant",
           content: payload.text,
           ragResults: payload.ragResults?.length ? payload.ragResults : undefined,
@@ -98,7 +106,7 @@ export default function SoldierClaimPage({
     }
   }
 
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
+  function onSubmit(event: { preventDefault(): void }) {
     event.preventDefault();
     void send();
   }
@@ -238,9 +246,9 @@ export default function SoldierClaimPage({
                 </div>
               )}
 
-              {messages.map((message, index) => (
+              {messages.map((message) => (
                 <div
-                  key={index}
+                  key={message.id}
                   className={`flex flex-col gap-2 ${message.role === "user" ? "items-end" : "items-start"}`}
                 >
                   <div
@@ -298,6 +306,11 @@ export default function SoldierClaimPage({
           </main>
 
           <footer className="shrink-0 border-t border-zinc-200 bg-white px-4 py-4">
+            {lastSaved && (
+              <p className="mx-auto mb-2 max-w-2xl text-xs text-teal-700">
+                Progress saved at {lastSaved}
+              </p>
+            )}
             <form className="mx-auto flex max-w-2xl gap-3" onSubmit={onSubmit}>
               <textarea
                 className="min-h-[44px] flex-1 resize-none border border-zinc-300 bg-white px-3 py-2.5 text-sm leading-6 outline-none transition focus:border-teal-700 focus:ring-2 focus:ring-teal-700/15"
@@ -331,11 +344,11 @@ function AuthRow({
   label,
   value,
   highlight = false,
-}: {
+}: Readonly<{
   label: string;
   value: string;
   highlight?: boolean;
-}) {
+}>) {
   return (
     <div>
       <p className="text-xs font-semibold text-zinc-400">{label}</p>
